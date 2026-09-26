@@ -9,7 +9,7 @@ try {
         $files = @(Get-ChildItem $part -File -Recurse | Where-Object Name -ne '.gitkeep')
         if (!$files.Count) { Write-Host "SKIPPED / NOT CONFIGURED: $part dependency install, lint, typecheck, tests, build and security checks." }
     }
-    if (!$config.approved -or (Get-Content SPEC.md -Raw) -match 'BOOTSTRAP_PLACEHOLDER') { throw 'RELEASE BLOCKED: specification/contracts not approved and release gates not configured.' }
+    if (!$config.approved -or (Get-Content SPEC.md -Raw) -match 'BOOTSTRAP[_ ]PLACEHOLDER') { throw 'RELEASE BLOCKED: specification/contracts not approved and release gates not configured.' }
     if (Get-ChildItem contracts -File | Select-String 'BOOTSTRAP_PLACEHOLDER') { throw 'RELEASE BLOCKED: placeholder contracts.' }
     $parts = if ($Component -eq 'all') { @('contracts','client','server') } elseif ($Component -eq 'contracts') { @('contracts') } else { @('contracts',$Component) }
     foreach ($part in $parts) {

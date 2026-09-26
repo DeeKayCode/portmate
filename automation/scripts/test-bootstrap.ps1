@@ -30,7 +30,7 @@ try {
     }
     & pwsh -NoProfile -File automation/scripts/invoke-gpt-worker.ps1 -TriggerSha invalid -RepositoryPath $root 2>$null | Out-Null
     if ($LASTEXITCODE -eq 0) { throw 'Invalid event SHA was accepted.' }
-    if ((Get-Content SPEC.md -Raw) -match 'BOOTSTRAP_PLACEHOLDER') {
+    if ((Get-Content SPEC.md -Raw) -match 'BOOTSTRAP[_ ]PLACEHOLDER') {
         & pwsh -NoProfile -File automation/scripts/test-release-gates.ps1 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { throw 'Placeholder release gate falsely passed.' }
     }

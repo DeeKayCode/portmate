@@ -42,3 +42,5 @@ Both wrappers require a clean client checkout, correct origin, full event SHA at
 ## Current bootstrap status
 
 Runner registration, remote workflow enablement, Gemini CLI discovery and cross-machine handshake require workstation/account setup. Until all are verified, do not report PORTMATE AUTOMATION READY.
+
+The concurrent remote bootstrap (`30f5e72`) and GPT bootstrap (`fe7a0e2`) were reconciled on client without rewriting either history. The remote SPEC and contracts are preserved byte-for-byte; their placeholder schemas are not approved contracts, and the release gate rejects them. The deterministic handshake uses the single `state` field (START → GEMINI_OK → GPT_OK → COMPLETE); follow this runbook instead of the earlier `phase` examples in the historical bootstrap document. Main/server retain their remote baseline until human-reviewed integration.
