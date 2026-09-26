@@ -71,12 +71,14 @@ try {
         foreach ($file in $files) {
             if ($handshake) {
                 if ($file -ne 'automation/handshake/state.json') { throw 'Handshake changed other files.' }
-            } elseif ($file -notmatch '^mobile/') { throw "Worker changed protected path: $file" }
+            } elseif ($Role -eq 'gpt' -and $file -notmatch '^(server/|contracts/|docs/|compose\.yaml$|\.env\.example$|README\.md$)') { throw "GPT changed protected path: $file" }
+            elseif ($Role -eq 'gemini' -and $file -notmatch '^(mobile/|DesignSpec\.md$)') { throw "Gemini changed protected path: $file" }
         }
         Assert-NoSecrets $commit
     }
     if (!$handshake) {
-        & "$PSScriptRoot/test-release-gates.ps1" -Component client
+        $component = if ($Role -eq 'gpt') { 'server' } else { 'client' }
+        & "$PSScriptRoot/test-release-gates.ps1" -Component $component
         if ($LASTEXITCODE -ne 0) { throw 'Client gate failed.' }
         Assert-Clean
     }

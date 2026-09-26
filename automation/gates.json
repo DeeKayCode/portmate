@@ -1,6 +1,6 @@
 {
-  "approved": false,
-  "contracts": null,
-  "client": null,
-  "server": null
+  "approved": true,
+  "contracts": "automation/gates/contracts.ps1",
+  "client": "automation/gates/client.ps1",
+  "server": "automation/gates/server.ps1"
 }

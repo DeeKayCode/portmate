@@ -9,7 +9,7 @@ try {
         [Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
         if ($errors.Count) { throw "PowerShell parse error in $($file.Name): $errors" }
     }
-    foreach ($path in @('SPEC.md','AGENTS.md','prompts/gpt-worker.md','prompts/gemini-worker.md','prompts/server-worker.md','contracts/openapi.yaml','.github/workflows/ci.yml','.github/workflows/trigger-gpt.yml','.github/workflows/trigger-gemini.yml')) {
+    foreach ($path in @('SPEC.md','AGENTS.md','DesignSpec.md','prompts/gpt-worker.md','prompts/gemini-worker.md','contracts/CHANGELOG.md','contracts/openapi.yaml','.github/workflows/ci.yml','.github/workflows/trigger-gpt.yml','.github/workflows/trigger-gemini.yml')) {
         if (!(Test-Path $path)) { throw "Missing $path" }
     }
     foreach ($path in @('contracts/models.schema.json','contracts/events.schema.json','automation/gates.json','automation/handshake/state.json')) {
@@ -30,11 +30,9 @@ try {
     }
     & pwsh -NoProfile -File automation/scripts/invoke-gpt-worker.ps1 -TriggerSha invalid -RepositoryPath $root 2>$null | Out-Null
     if ($LASTEXITCODE -eq 0) { throw 'Invalid event SHA was accepted.' }
-    if ((Get-Content SPEC.md -Raw) -match 'BOOTSTRAP[_ ]PLACEHOLDER') {
-        & pwsh -NoProfile -File automation/scripts/test-release-gates.ps1 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { throw 'Placeholder release gate falsely passed.' }
-    }
+    if ((Get-Content SPEC.md -Raw) -match 'BOOTSTRAP[_ ]PLACEHOLDER') { throw 'Approved SPEC was not installed.' }
+    if (Get-ChildItem contracts -File | Select-String 'BOOTSTRAP[_ ]PLACEHOLDER') { throw 'Approved contracts still contain bootstrap placeholders.' }
     Assert-NoSecrets
-    Write-Host 'PASS: script syntax, required files, JSON, marker routing, invalid SHA rejection, placeholder release rejection and tracked secret scan.'
+    Write-Host 'PASS: script syntax, approved source-of-truth files, JSON, marker routing, invalid SHA rejection and tracked secret scan.'
 } finally { Pop-Location }
 exit 0

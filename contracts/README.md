@@ -1,14 +1,7 @@
-# PortMate – Contracts Directory
+# PortMate API contracts
 
-> The contracts directory is the single source of truth for communication between PortMate components. Worker agents MUST NOT modify contracts during implementation. Contract changes require explicit human approval.
+These versioned files are the shared frontend/backend boundary for the PortMate PWA. `openapi.yaml` defines synchronous HTTP API; `models.schema.json` defines domain payloads; `events.schema.json` defines persisted-notification and future transport envelopes.
 
-## Overview
-This directory houses all formal schemas and interface contracts governing the interactions between the mobile client and the backend server:
+Gemini consumes contracts and does not edit them. GPT may add a compatible contract only when required by the active frontend handoff. Update all relevant files and `CHANGELOG.md` together. Removing fields, changing meanings or otherwise breaking a released contract needs human approval.
 
-- `openapi.yaml`: REST API specification (OpenAPI 3.1) defining endpoints, parameters, request bodies, and responses.
-- `models.schema.json`: JSON Schema definitions for domain entities (Users, Vessels, Itineraries, Ports, Overlaps, Meetups).
-- `events.schema.json`: JSON Schema definitions for asynchronous event payloads (WebSockets / Push Notifications).
-
-## Contract Immutability Rule
-1. Agents (`gemini-worker`, `gpt-worker`, `server-worker`) must **never modify** files within this directory.
-2. In the event of schema deficiencies, inconsistencies, or newly required endpoints, the agent must pause execution, document the proposed contract change, and submit it for human approval.
+The version 1.0 baseline describes the approved product architecture. It does not grant any external provider credentials or production secrets.

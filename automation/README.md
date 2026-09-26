@@ -1,6 +1,6 @@
 # PortMate automation
 
-Bootstrap only. Product work is blocked until approved SPEC/contracts, configured release gates, and explicit human authorization. `main` is stable; both client workers use `client`; server work uses `server`.
+Automation supports the approved PortMate PWA and backend baseline. Both workers use `client`: Gemini owns `mobile/`; GPT owns `server/`, compatible contracts and final integration. `main` remains reserved for human release review.
 
 ## Emergency stop
 
@@ -24,7 +24,7 @@ Only after both runners validate and are online, request human confirmation imme
 
 ## Implementation and release gates
 
-Once the human approves the final spec/contracts and explicitly authorizes development, configure `automation/gates.json` with approved=true and reviewed PowerShell gate files under `automation/gates/`. Contracts gate must validate OpenAPI and JSON Schema with the selected stack's actual validators. Client gate must install dependencies, lint, typecheck, run unit tests, validate a build and run appropriate dependency/security checks. Server gate must run server tests, a container build and appropriate security checks. Populate the Definition of Done in SPEC. Bootstrap placeholders deliberately fail release CI. Bootstrap syntax/security checks are separate from product release validation. `[CLIENT_COMPLETE]` requires the client gate and passing CI, not just a commit message.
+The approved baseline uses `automation/gates/` for contract, backend and mobile checks. Contract validation parses OpenAPI and JSON Schema. The backend gate runs dependency install, type checking, linting, tests and build. The client gate runs after `mobile/package.json` is supplied by Gemini. `[CLIENT_COMPLETE]` requires all release gates and passing CI.
 
 ## Execution safeguards and recovery
 
@@ -41,6 +41,4 @@ Both wrappers require a clean client checkout, correct origin, full event SHA at
 
 ## Current bootstrap status
 
-Runner registration, remote workflow enablement, Gemini CLI discovery and cross-machine handshake require workstation/account setup. Until all are verified, do not report PORTMATE AUTOMATION READY.
-
-The concurrent remote bootstrap (`30f5e72`) and GPT bootstrap (`fe7a0e2`) were reconciled on client without rewriting either history. The remote SPEC and contracts are preserved byte-for-byte; their placeholder schemas are not approved contracts, and the release gate rejects them. The deterministic handshake uses the single `state` field (START → GEMINI_OK → GPT_OK → COMPLETE); follow this runbook instead of the earlier `phase` examples in the historical bootstrap document. Main/server retain their remote baseline until human-reviewed integration.
+The GPT runner, Actions configuration and the cross-machine handshake have been validated. The handshake state is `COMPLETE`. The next step is Gemini's first real `[GEMINI]` frontend handoff; GPT then performs its backend and final-integration work under `SPEC.md` and `/contracts`.

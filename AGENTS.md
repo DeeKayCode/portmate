@@ -1,89 +1,29 @@
-# PortMate – Multi-Agent Collaboration Governance
+# PortMate collaboration governance
 
-This document establishes the ground rules, boundaries, and communication protocol for all autonomous and semi-autonomous AI agents operating within `DeeKayCode/portmate`.
+## Source of truth
 
----
+Priority: approved `/contracts`, `SPEC.md`, this file, then implementation. `DesignSpec.md` is Gemini-owned UI guidance and must conform to the approved product scope. If two approved sources conflict, stop and report the conflict.
 
-## 1. Source of Truth Hierarchy
+## Ownership
 
-When resolving requirements, architectural decisions, or discrepancies, agents must follow this strict priority order:
+- **Gemini** owns the complete frontend PWA: UI/UX, frontend architecture, client state/data, navigation, forms, caching, maps and frontend tests.
+- **GPT** owns the complete backend and final system integration: API, PostgreSQL, migrations, backend/domain logic, authentication, authorization, provider abstraction, notifications, Docker readiness, backend/integration tests and release audit.
+- There is no active server-worker/ÓE agent.
 
-1. **`/contracts`** – Frozen, versioned schemas and API specifications. (Highest priority)
-2. **`SPEC.md`** – Approved product and architectural specification.
-3. **`AGENTS.md`** – This governance and ownership guideline.
-4. **Existing implementation** – Current repository code on the relevant branch.
+Both active workers use `client`. `main` remains human-reviewed stable integration; `server` is retained only as a historical branch and is not an active workstream.
 
-> [!CAUTION]
-> If any conflict or ambiguity is detected between these sources, the agent **MUST STOP and report the conflict**. Never guess, invent schemas, or create proprietary protocol extensions.
+## Contracts
 
----
+`/contracts` is the shared API boundary. Gemini must never change it. GPT may make a compatible contract change only when required to support the active Gemini handoff; it must update the OpenAPI/JSON schema together with backend validation and record it in `contracts/CHANGELOG.md`. Breaking changes require human approval.
 
-## 2. Worker Ownership Boundaries
+## Prohibitions
 
-### Gemini (`gemini-worker`)
-- **Domain**: Mobile frontend, user interface (UI), and user experience (UX).
-- **Branch**: `client`
-- **Workstation**: Dönci's Windows workstation.
-- **Trigger**: Pushes to `client` with commit prefix `[GPT]`.
-- **Handoff marker**: `[GEMINI] <description>` or `[GEMINI_COMPLETE] Frontend implementation complete`.
-- **Responsibilities**:
-  - Implement and refine views, components, navigation flows, and styling.
-  - Bind to state and data interfaces provided by `gpt-worker`.
-  - Maintain UI/component tests.
-  - Never modify `/contracts` or implement server code.
+No worker may commit secrets, force-push, rewrite published history, merge to `main`, disable security checks, deploy externally, access production accounts, or implement prohibited social/GPS features. Do not bypass system security controls.
 
-### GPT (`gpt-worker`)
-- **Domain**: Mobile application logic, data layer, state management, and client-side persistence.
-- **Branch**: `client`
-- **Workstation**: Adam's Windows workstation.
-- **Trigger**: Pushes to `client` with commit prefix `[GEMINI]` or `[GEMINI_COMPLETE]`.
-- **Handoff marker**: `[GPT] <description>` or `[CLIENT_COMPLETE] Client release gate passed`.
-- **Responsibilities**:
-  - Implement application state, API clients, authentication token handling, and local storage.
-  - Implement client-side business logic, synchronization, and event handlers.
-  - Maintain data layer and integration unit tests.
-  - Conduct full audit and release validation upon receiving `[GEMINI_COMPLETE]`.
-  - Never redesign Gemini's UI unless fixing a functional integration defect.
-  - Never modify `/contracts` or implement server code.
+## Workflow
 
-### ÓE GenAI (`server-worker`)
-- **Domain**: Server-side implementation, persistence, and external service adapters.
-- **Branch**: `server`
-- **Deployment**: Debian-based LXC with Docker Compose.
-- **Responsibilities**:
-  - Implement REST/WebSocket APIs conforming exactly to `/contracts`.
-  - Database schema, migrations, background workers, and scheduling.
-  - Authentication verification, health checks, and logging.
-  - Maintain server-side automated test suites.
-  - Never modify `/contracts` without explicit human sign-off.
+The triggering commit SHA and marker decide turns: `[GEMINI]` invokes GPT; `[GPT]` invokes Gemini; `[GEMINI_COMPLETE]` invokes GPT's final audit; `[CLIENT_COMPLETE]` stops both. Bootstrap and maintenance commits never use worker markers.
 
----
+On a normal handoff, work only on the required dependency chain. GPT may edit `server/`, `/contracts`, backend documentation and Docker/release configuration; Gemini may edit `mobile/` and `DesignSpec.md`. Each worker tests, repairs its own failures and creates one coherent handoff commit with `PortMate-Trigger: <trigger-sha>`. The wrapper pushes it.
 
-## 3. Strict Prohibitions (Forbidden Without Explicit Human Approval)
-
-No agent may autonomously:
-1. **Modify `/contracts`** under any circumstance.
-2. **Alter the fundamental architecture** or branch model.
-3. **Introduce paid third-party infrastructure** or external paid SaaS dependencies.
-4. **Commit secrets**, API tokens, private keys, passwords, or credentials.
-5. **Disable or bypass security checks**, linters, or test gates.
-6. **Delete or corrupt existing user data** or database tables without verified migration scripts.
-7. **Force-push** (`git push --force` or `--force-with-lease`) to shared branches (`main`, `client`, `server`).
-8. **Rewrite Git history** (rebase or reset published commits).
-9. **Merge into `main`** (merges to `main` are reserved for human release review).
-
----
-
-## 4. Engineering Quality Standards
-
-Every agent must:
-- **Inspect existing code first** before proposing or writing modifications.
-- **Implement functioning code** rather than returning instructions or descriptions.
-- **Test all modifications** locally using relevant test runners before committing.
-- **Repair any regression or build failure** introduced by its modifications.
-- **Produce coherent, atomic commits** with standard prefix tags.
-- **Preserve buildability**: Always leave the repository in a clean, buildable state.
-
-## 5. Bootstrap execution boundary
-
-Product development requires final human-approved SPEC/contracts and explicit authorization to start. During automated client implementation, only mobile files may change; automation, workflows, prompts, SPEC and governance remain protected. The wrapper validates and pushes; agents must not push themselves. Every outgoing worker commit includes `PortMate-Trigger: <trigger-sha>` in its body. Maintenance commits never use handoff markers. A completion marker requires actual release gates and passing CI.
+The current initialization is an exception: GPT may reconcile source-of-truth documents, contracts and automation gates, then must commit a non-triggering `chore:` commit and wait for Gemini's first real product handoff.

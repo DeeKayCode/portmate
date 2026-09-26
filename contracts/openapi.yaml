@@ -1,16 +1,109 @@
-# BOOTSTRAP_PLACEHOLDER: Awaiting human approved API contract
-# This file is intentionally a placeholder to prevent accidental premature implementation.
 openapi: 3.1.0
 info:
-  title: PortMate API (BOOTSTRAP PLACEHOLDER)
-  version: 0.0.1-placeholder
-  description: >
-    Formal OpenAPI specification pending architecture review and sign-off.
-    Autonomous agents must not fabricate API endpoints.
+  title: PortMate API
+  version: 1.0.0
+  description: Versioned REST contract for the PortMate PWA and backend.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
 paths:
-  /bootstrap/status:
+  /health:
     get:
-      summary: Automation bootstrap placeholder check
-      responses:
-        '200':
-          description: OK
+      security: []
+      operationId: health
+      responses: {'200': {description: Service health, content: {application/json: {schema: {$ref: '#/components/schemas/Health'}}}}}
+  /auth/register:
+    post:
+      security: []
+      operationId: register
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RegisterRequest'}}}}
+      responses: {'202': {description: Email verification required, content: {application/json: {schema: {$ref: '#/components/schemas/VerificationPending'}}}}, '409': {$ref: '#/components/responses/Problem'}}
+  /auth/login:
+    post:
+      security: []
+      operationId: login
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginRequest'}}}}
+      responses: {'200': {description: Session, content: {application/json: {schema: {$ref: '#/components/schemas/Session'}}}}, '401': {$ref: '#/components/responses/Problem'}}
+  /auth/google:
+    post:
+      security: []
+      operationId: googleLogin
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GoogleAuthRequest'}}}}
+      responses: {'200': {description: Session, content: {application/json: {schema: {$ref: '#/components/schemas/Session'}}}}}
+  /auth/verify-email:
+    post:
+      security: []
+      operationId: verifyEmail
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TokenRequest'}}}}
+      responses: {'204': {description: Verified}, '400': {$ref: '#/components/responses/Problem'}}
+  /me:
+    get: {operationId: getMe, responses: {'200': {description: Profile, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}}}
+    patch: {operationId: updateMe, requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProfileUpdate'}}}}, responses: {'200': {description: Profile, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}}}
+  /settings:
+    get: {operationId: getSettings, responses: {'200': {description: Settings, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}}}
+    patch: {operationId: updateSettings, requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}, responses: {'200': {description: Settings, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}}}
+  /ships/companies:
+    get: {operationId: listCompanies, responses: {'200': {description: Companies, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/CruiseCompany'}}}}}}}
+  /ships:
+    get: {operationId: listShips, parameters: [{in: query, name: companyId, schema: {type: string}}], responses: {'200': {description: Ships, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Ship'}}}}}}}
+  /assignments:
+    get: {operationId: listAssignments, responses: {'200': {description: Assignments, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Assignment'}}}}}}}
+    post: {operationId: createAssignment, requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AssignmentInput'}}}}, responses: {'201': {description: Assignment, content: {application/json: {schema: {$ref: '#/components/schemas/Assignment'}}}}, '422': {$ref: '#/components/responses/Problem'}}}
+  /assignments/{assignmentId}:
+    patch: {operationId: updateAssignment, parameters: [{$ref: '#/components/parameters/AssignmentId'}], requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AssignmentInput'}}}}, responses: {'200': {description: Assignment, content: {application/json: {schema: {$ref: '#/components/schemas/Assignment'}}}}}}
+    delete: {operationId: deleteAssignment, parameters: [{$ref: '#/components/parameters/AssignmentId'}], responses: {'204': {description: Deleted}}}
+  /itinerary:
+    get: {operationId: getItinerary, parameters: [{in: query, name: assignmentId, required: true, schema: {type: string, format: uuid}}], responses: {'200': {description: Itinerary, content: {application/json: {schema: {$ref: '#/components/schemas/Itinerary'}}}}}}
+  /connections:
+    get: {operationId: listConnections, responses: {'200': {description: Connections, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Connection'}}}}}}}
+  /connections/qr:
+    post: {operationId: createQrConnectionToken, responses: {'201': {description: One-time connection token, content: {application/json: {schema: {$ref: '#/components/schemas/ConnectionToken'}}}}}}
+  /connections/claim:
+    post: {operationId: claimConnectionToken, requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TokenRequest'}}}}, responses: {'201': {description: Connection, content: {application/json: {schema: {$ref: '#/components/schemas/Connection'}}}}, '409': {$ref: '#/components/responses/Problem'}}}
+  /connections/{connectionId}:
+    delete: {operationId: removeConnection, parameters: [{$ref: '#/components/parameters/ConnectionId'}], responses: {'204': {description: Removed}}}
+  /blocks:
+    post: {operationId: blockUser, requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BlockInput'}}}}, responses: {'201': {description: Block created}}}
+  /overlaps:
+    get: {operationId: listOverlaps, parameters: [{in: query, name: lifecycle, schema: {enum: [future, current, expired]}}], responses: {'200': {description: Overlaps, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Overlap'}}}}}}}
+  /overlaps/{overlapId}/poke:
+    post: {operationId: createPoke, parameters: [{$ref: '#/components/parameters/OverlapId'}], responses: {'201': {description: Poke, content: {application/json: {schema: {$ref: '#/components/schemas/MeetingIntent'}}}}, '409': {$ref: '#/components/responses/Problem'}}}
+  /overlaps/{overlapId}/intent:
+    patch: {operationId: respondToPoke, parameters: [{$ref: '#/components/parameters/OverlapId'}], requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/MeetingIntentResponse'}}}}, responses: {'200': {description: Intent, content: {application/json: {schema: {$ref: '#/components/schemas/MeetingIntent'}}}}}}
+  /notifications:
+    get: {operationId: listNotifications, responses: {'200': {description: Notifications, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Notification'}}}}}}}
+components:
+  securitySchemes: {bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}}
+  parameters:
+    AssignmentId: {in: path, name: assignmentId, required: true, schema: {type: string, format: uuid}}
+    ConnectionId: {in: path, name: connectionId, required: true, schema: {type: string, format: uuid}}
+    OverlapId: {in: path, name: overlapId, required: true, schema: {type: string, format: uuid}}
+  responses:
+    Problem: {description: Request problem, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  schemas:
+    Health: {type: object, required: [status], properties: {status: {const: ok}, database: {enum: [unknown, healthy, unhealthy]}}}
+    Problem: {type: object, required: [type, title, status], properties: {type: {type: string, format: uri-reference}, title: {type: string}, status: {type: integer}, detail: {type: string}}}
+    RegisterRequest: {type: object, required: [email, password, username], properties: {email: {type: string, format: email}, password: {type: string, minLength: 12}, username: {$ref: '#/components/schemas/Username'}}}
+    LoginRequest: {type: object, required: [email, password], properties: {email: {type: string, format: email}, password: {type: string}}}
+    GoogleAuthRequest: {type: object, required: [idToken], properties: {idToken: {type: string}}}
+    TokenRequest: {type: object, required: [token], properties: {token: {type: string, minLength: 20}}}
+    VerificationPending: {type: object, required: [verificationRequired], properties: {verificationRequired: {const: true}}}
+    Session: {type: object, required: [accessToken, user], properties: {accessToken: {type: string}, user: {$ref: '#/components/schemas/Profile'}}}
+    Username: {type: string, minLength: 3, maxLength: 32, pattern: '^[A-Za-z0-9_]+$'}
+    Profile: {type: object, required: [id, username, emailVerified], properties: {id: {type: string, format: uuid}, username: {$ref: '#/components/schemas/Username'}, displayName: {type: string, maxLength: 80}, avatarUrl: {type: string, format: uri}, emailVerified: {type: boolean}, lastActiveLabel: {enum: [recently, hours_ago, yesterday, older]}}}
+    ProfileUpdate: {type: object, properties: {username: {$ref: '#/components/schemas/Username'}, displayName: {type: string, maxLength: 80}, avatarUrl: {type: string, format: uri}}}
+    Settings: {type: object, required: [nearbyPortThresholdKm], properties: {nearbyPortThresholdKm: {type: number, minimum: 1, maximum: 500, default: 50}}}
+    CruiseCompany: {type: object, required: [id, name], properties: {id: {type: string}, name: {type: string}}}
+    Ship: {type: object, required: [id, name, company], properties: {id: {type: string}, name: {type: string}, company: {$ref: '#/components/schemas/CruiseCompany'}}}
+    AssignmentInput: {type: object, required: [companyId, shipId, startDate, endDate], properties: {companyId: {type: string}, shipId: {type: string}, startDate: {type: string, format: date}, endDate: {type: string, format: date}}}
+    Assignment: {allOf: [{$ref: '#/components/schemas/AssignmentInput'}, {type: object, required: [id, createdAt], properties: {id: {type: string, format: uuid}, createdAt: {type: string, format: date-time}}}]}
+    PortCall: {type: object, required: [portId, portName, arrivalAt, departureAt, latitude, longitude], properties: {portId: {type: string}, portName: {type: string}, countryCode: {type: string}, arrivalAt: {type: string, format: date-time}, departureAt: {type: string, format: date-time}, latitude: {type: number}, longitude: {type: number}}}
+    Itinerary: {type: object, required: [assignmentId, portCalls], properties: {assignmentId: {type: string, format: uuid}, portCalls: {type: array, items: {$ref: '#/components/schemas/PortCall'}}, sourceUpdatedAt: {type: string, format: date-time}}}
+    Connection: {type: object, required: [id, profile, createdAt], properties: {id: {type: string, format: uuid}, profile: {$ref: '#/components/schemas/Profile'}, createdAt: {type: string, format: date-time}}}
+    ConnectionToken: {type: object, required: [token, expiresAt], properties: {token: {type: string}, expiresAt: {type: string, format: date-time}}}
+    BlockInput: {type: object, required: [userId], properties: {userId: {type: string, format: uuid}}}
+    Overlap: {type: object, required: [id, connection, type, lifecycle, startsAt, endsAt], properties: {id: {type: string, format: uuid}, connection: {$ref: '#/components/schemas/Profile'}, type: {enum: [same_port, nearby_port, same_ship]}, lifecycle: {enum: [future, current, expired]}, startsAt: {type: string, format: date-time}, endsAt: {type: string, format: date-time}, portCalls: {type: array, items: {$ref: '#/components/schemas/PortCall'}}, distanceKm: {type: number}, meetingIntent: {$ref: '#/components/schemas/MeetingIntent'}}}
+    MeetingIntent: {type: object, required: [status], properties: {status: {enum: [none, poked, interested, not_interested]}, updatedAt: {type: string, format: date-time}}}
+    MeetingIntentResponse: {type: object, required: [status], properties: {status: {enum: [interested, not_interested]}}}
+    Notification: {type: object, required: [id, type, createdAt, read], properties: {id: {type: string, format: uuid}, type: {enum: [overlap_upcoming, poke_received, poke_response]}, createdAt: {type: string, format: date-time}, read: {type: boolean}, overlapId: {type: string, format: uuid}}}

@@ -1,13 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PortMateModelsPlaceholder",
-  "description": "BOOTSTRAP_PLACEHOLDER: Pending formal domain models approval. Agents must not fabricate domain models.",
-  "type": "object",
-  "properties": {
-    "bootstrap": {
-      "type": "boolean",
-      "const": true
-    }
-  },
-  "required": ["bootstrap"]
+  "$id": "https://portmate.example/contracts/models.schema.json",
+  "title": "PortMate domain models v1",
+  "oneOf": [
+    { "$ref": "#/$defs/Assignment" },
+    { "$ref": "#/$defs/PortCall" },
+    { "$ref": "#/$defs/Overlap" },
+    { "$ref": "#/$defs/Notification" }
+  ],
+  "$defs": {
+    "Uuid": { "type": "string", "format": "uuid" },
+    "Assignment": { "type": "object", "additionalProperties": false, "required": ["id", "companyId", "shipId", "startDate", "endDate", "createdAt"], "properties": { "id": { "$ref": "#/$defs/Uuid" }, "companyId": { "type": "string" }, "shipId": { "type": "string" }, "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "createdAt": { "type": "string", "format": "date-time" } } },
+    "PortCall": { "type": "object", "additionalProperties": false, "required": ["portId", "portName", "arrivalAt", "departureAt", "latitude", "longitude"], "properties": { "portId": { "type": "string" }, "portName": { "type": "string" }, "arrivalAt": { "type": "string", "format": "date-time" }, "departureAt": { "type": "string", "format": "date-time" }, "latitude": { "type": "number", "minimum": -90, "maximum": 90 }, "longitude": { "type": "number", "minimum": -180, "maximum": 180 } } },
+    "Overlap": { "type": "object", "additionalProperties": false, "required": ["id", "type", "lifecycle", "startsAt", "endsAt"], "properties": { "id": { "$ref": "#/$defs/Uuid" }, "type": { "enum": ["same_port", "nearby_port", "same_ship"] }, "lifecycle": { "enum": ["future", "current", "expired"] }, "startsAt": { "type": "string", "format": "date-time" }, "endsAt": { "type": "string", "format": "date-time" }, "distanceKm": { "type": "number", "minimum": 0 }, "meetingIntent": { "enum": ["none", "poked", "interested", "not_interested"] } } },
+    "Notification": { "type": "object", "additionalProperties": false, "required": ["id", "type", "createdAt", "read"], "properties": { "id": { "$ref": "#/$defs/Uuid" }, "type": { "enum": ["overlap_upcoming", "poke_received", "poke_response"] }, "createdAt": { "type": "string", "format": "date-time" }, "read": { "type": "boolean" } } }
+  }
 }

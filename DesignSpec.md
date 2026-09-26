@@ -110,14 +110,14 @@ PortMate uses a persistent bottom navigation bar with 4 primary destinations and
 │                     Active Screen                      │
 │                                                        │
 ├────────────────────────────────────────────────────────┤
-│  [🚢 Itinerary]  [🎯 Overlaps]  [📍 Ports]  [💬 Chat]  │
+│  [🚢 Itinerary]  [🎯 Overlaps]  [📍 Map]  [👤 Profile] │
 └────────────────────────────────────────────────────────┘
 ```
 
 1. **`Itinerary` (Timeline)**: Complete schedule of ports, sea days, docking status, and contract countdowns.
 2. **`Overlaps` (Radar)**: Port-sharing matchmaker highlighting friends docked in the same port at the same time.
-3. **`Ports` (Amenities)**: Port directory detailing crew amenities, free Wi-Fi hotspots, currency exchange, SIM cards, and discounts.
-4. **`Chat` (Connect)**: Instant meetup messaging and group channels per port call.
+3. **`Map` (Locations)**: Map-oriented view of itinerary-derived port calls and qualifying overlap locations. It never uses continuous GPS tracking.
+4. **`Profile`**: Account, assignments, distance threshold, notification and privacy settings.
 
 ---
 
@@ -143,25 +143,21 @@ PortMate uses a persistent bottom navigation bar with 4 primary destinations and
     - Overlapping friend list:
       - Friend Avatar + Name + Vessel Name (`e.g. "Carnival Celebration"`).
       - Overlap window (`e.g. "Overlapping: 10:00 - 17:00 (7 hours)"`).
-      - Quick Action: `[Meetup Invite]` or `[Quick Message]`.
+      - Quick Action: `[I'm interested]` for an eligible future overlap.
   - `EmptyState`: Friendly nautical illustration with notification toggle: *"Notify me when friends dock in my ports"*.
 
-### Screen 3: `PortAmenityDirectoryScreen`
-- **Purpose**: Offline-first port survival guide curated by crew for crew.
+### Screen 3: `PortMapScreen`
+- **Purpose**: Map and list view of itinerary-derived port calls and future/current PortMate overlaps.
 - **Components**:
-  - `PortSearchHeader`: Auto-suggest filter with offline cached ports.
-  - `AmenityCategoryPills`: `[Free Wi-Fi]`, `[Crew Discounts]`, `[Supermarket]`, `[Pharmacy]`, `[Taxis]`.
-  - `AmenityCard`:
-    - Title, distance from cruise pier (meters/miles).
-    - Wi-Fi password / speed rating (offline-readable).
-    - Verification badge (`"Verified by crew 3 days ago"`).
-    - Walk-time estimate and offline offline map vector link.
+  - `PortMapHeader`: Current assignment and cached-itinerary freshness.
+  - `PortCallMarker`: Port name, docking window and overlap count.
+  - `OverlapLocationCard`: Connection, qualifying interval, same-port/nearby/same-ship relationship and meeting-intent action.
 
-### Screen 4: `CrewProfileAssignmentScreen`
-- **Purpose**: Manage crew contract dates, home port, current ship assignment, and privacy controls.
+### Screen 4: `ProfileAssignmentScreen`
+- **Purpose**: Manage the optional profile, current ship assignment, notification settings and account controls.
 - **Components**:
-  - `VesselContractCard`: Current contract timeline (start date, sign-off date, countdown to vacation).
-  - `PrivacyMatrix`: Granular toggles (`Share schedule with Friends Only`, `Share with Vessel Crew`, `Incognito in Port`).
+  - `AssignmentCard`: Current ship and active assignment dates.
+  - `SettingsControls`: Nearby-overlap radius, email notification, profile visibility and account actions.
 
 ---
 
