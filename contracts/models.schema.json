@@ -1,13 +1,112 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PortMateModelsPlaceholder",
-  "description": "BOOTSTRAP_PLACEHOLDER: Pending formal domain models approval. Agents must not fabricate domain models.",
+  "title": "PortMateModels",
+  "description": "PortMate Core Domain Models Specification",
   "type": "object",
-  "properties": {
-    "bootstrap": {
-      "type": "boolean",
-      "const": true
+  "definitions": {
+    "User": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "email": { "type": "string", "format": "email" },
+        "username": { "type": "string", "pattern": "^[a-zA-Z0-9_]{3,30}$" },
+        "displayName": { "type": "string" },
+        "avatarUrl": { "type": ["string", "null"] },
+        "bio": { "type": ["string", "null"] },
+        "role": { "type": "string", "enum": ["crew", "officer", "guest", "entertainer", "other"] },
+        "nearbyRadiusKm": { "type": "integer", "default": 50, "minimum": 5, "maximum": 200 },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "username", "lastActiveAt"]
+    },
+    "Contract": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "cruiseLine": { "type": "string" },
+        "shipName": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "role": { "type": ["string", "null"] },
+        "status": { "type": "string", "enum": ["active", "upcoming", "past"] }
+      },
+      "required": ["id", "userId", "cruiseLine", "shipName", "startDate", "endDate"]
+    },
+    "PortCall": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "contractId": { "type": "string", "format": "uuid" },
+        "shipName": { "type": "string" },
+        "portName": { "type": "string" },
+        "portCity": { "type": "string" },
+        "country": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "arrivalDate": { "type": "string", "format": "date-time" },
+        "departureDate": { "type": "string", "format": "date-time" },
+        "overlapsCount": { "type": "integer", "default": 0 }
+      },
+      "required": ["id", "shipName", "portName", "portCity", "country", "latitude", "longitude", "arrivalDate", "departureDate"]
+    },
+    "Overlap": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "type": { "type": "string", "enum": ["nearby-port", "same-port", "same-ship"] },
+        "portName": { "type": "string" },
+        "portCity": { "type": "string" },
+        "distanceKm": { "type": "number" },
+        "userPortCall": { "$ref": "#/definitions/PortCall" },
+        "matePortCall": { "$ref": "#/definitions/PortCall" },
+        "mate": { "$ref": "#/definitions/User" },
+        "sharedStart": { "type": "string", "format": "date-time" },
+        "sharedEnd": { "type": "string", "format": "date-time" },
+        "sharedHours": { "type": "number" },
+        "pokeStatus": { "type": ["string", "null"], "enum": ["none", "sent", "interested", "not_interested"] }
+      },
+      "required": ["id", "type", "mate", "userPortCall", "matePortCall", "sharedStart", "sharedEnd", "sharedHours"]
+    },
+    "Connection": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "mate": { "$ref": "#/definitions/User" },
+        "connectedAt": { "type": "string", "format": "date-time" },
+        "currentPortCity": { "type": ["string", "null"] },
+        "currentShip": { "type": ["string", "null"] },
+        "nextOverlap": { "type": ["string", "null"] }
+      },
+      "required": ["id", "mate", "connectedAt"]
+    },
+    "Poke": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "overlapId": { "type": "string", "format": "uuid" },
+        "senderId": { "type": "string", "format": "uuid" },
+        "recipientId": { "type": "string", "format": "uuid" },
+        "status": { "type": "string", "enum": ["PENDING", "INTERESTED", "NOT_INTERESTED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "respondedAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "required": ["id", "overlapId", "senderId", "recipientId", "status", "createdAt"]
+    },
+    "Notification": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "type": { "type": "string", "enum": ["OVERLAP_FOUND", "POKE_RECEIVED", "POKE_RESPONSE"] },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "data": { "type": "object" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "type", "title", "body", "read", "createdAt"]
     }
-  },
-  "required": ["bootstrap"]
+  }
 }

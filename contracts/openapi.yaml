@@ -1,16 +1,276 @@
-# BOOTSTRAP_PLACEHOLDER: Awaiting human approved API contract
-# This file is intentionally a placeholder to prevent accidental premature implementation.
 openapi: 3.1.0
 info:
-  title: PortMate API (BOOTSTRAP PLACEHOLDER)
-  version: 0.0.1-placeholder
+  title: PortMate REST API
+  version: 1.0.0
   description: >
-    Formal OpenAPI specification pending architecture review and sign-off.
-    Autonomous agents must not fabricate API endpoints.
+    Official REST API specification for PortMate, governing communication
+    between the frontend PWA (Gemini) and backend server (GPT).
+servers:
+  - url: /api/v1
+    description: Current API Version
+
 paths:
-  /bootstrap/status:
-    get:
-      summary: Automation bootstrap placeholder check
+  /auth/register:
+    post:
+      summary: Register new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, username]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                username: { type: string }
+                displayName: { type: string }
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+
+  /auth/login:
+    post:
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
       responses:
         '200':
           description: OK
+        '401':
+          description: Unauthorized
+
+  /auth/google:
+    post:
+      summary: Continue with Google OAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
+      responses:
+        '200':
+          description: OK
+
+  /auth/me:
+    get:
+      summary: Get current authenticated user
+      responses:
+        '200':
+          description: Current user profile
+        '401':
+          description: Not authenticated
+
+  /auth/logout:
+    post:
+      summary: Invalidate user session
+      responses:
+        '200':
+          description: Successfully logged out
+
+  /users/me:
+    patch:
+      summary: Update user profile and preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName: { type: string }
+                bio: { type: string }
+                avatarUrl: { type: string }
+                nearbyRadiusKm: { type: integer }
+      responses:
+        '200':
+          description: Profile updated
+
+  /contracts:
+    get:
+      summary: List user contracts
+      responses:
+        '200':
+          description: List of contracts
+    post:
+      summary: Create new ship assignment contract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cruiseLine, shipName, startDate, endDate]
+              properties:
+                cruiseLine: { type: string }
+                shipName: { type: string }
+                startDate: { type: string, format: date }
+                endDate: { type: string, format: date }
+                role: { type: string }
+      responses:
+        '201':
+          description: Contract created
+
+  /contracts/{id}:
+    put:
+      summary: Update a contract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Contract updated
+    delete:
+      summary: Delete a contract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Contract deleted
+
+  /itinerary:
+    get:
+      summary: Get chronological port calls and overlaps
+      parameters:
+        - name: startDate
+          in: query
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Chronological list of port calls with mate overlaps
+
+  /overlaps:
+    get:
+      summary: List all active and future overlaps with PortMates
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [all, nearby-port, same-port, same-ship] }
+      responses:
+        '200':
+          description: List of overlaps
+
+  /connections:
+    get:
+      summary: List connected PortMates
+      responses:
+        '200':
+          description: List of PortMates
+
+  /connections/qr-connect:
+    post:
+      summary: Establish frictionless PortMate connection via QR scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrToken]
+              properties:
+                qrToken: { type: string }
+      responses:
+        '200':
+          description: Connected successfully
+
+  /connections/{mateUserId}:
+    delete:
+      summary: Remove connection with PortMate
+      parameters:
+        - name: mateUserId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Connection removed
+
+  /connections/{mateUserId}/block:
+    post:
+      summary: Block a user
+      parameters:
+        - name: mateUserId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User blocked
+
+  /pokes:
+    post:
+      summary: Send meeting intent (Poke) for a future overlap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [overlapId]
+              properties:
+                overlapId: { type: string }
+      responses:
+        '201':
+          description: Poke sent
+
+  /pokes/{id}/respond:
+    post:
+      summary: Respond to meeting intent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response]
+              properties:
+                response: { type: string, enum: [INTERESTED, NOT_INTERESTED] }
+      responses:
+        '200':
+          description: Response recorded
+
+  /notifications:
+    get:
+      summary: Get notifications for the authenticated user
+      responses:
+        '200':
+          description: Notifications list
+
+  /notifications/{id}/read:
+    patch:
+      summary: Mark notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Updated

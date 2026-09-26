@@ -1,13 +1,48 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PortMateEventsPlaceholder",
-  "description": "BOOTSTRAP_PLACEHOLDER: Pending formal event payloads approval. Agents must not fabricate event payloads.",
+  "title": "PortMateEvents",
+  "description": "PortMate Asynchronous Event & Notification Payloads",
   "type": "object",
-  "properties": {
-    "bootstrap": {
-      "type": "boolean",
-      "const": true
+  "definitions": {
+    "OverlapEvent": {
+      "type": "object",
+      "properties": {
+        "eventType": { "type": "string", "const": "PORTMATE_OVERLAP_DETECTED" },
+        "overlapId": { "type": "string", "format": "uuid" },
+        "mateUserId": { "type": "string", "format": "uuid" },
+        "mateUsername": { "type": "string" },
+        "portName": { "type": "string" },
+        "overlapType": { "type": "string", "enum": ["nearby-port", "same-port", "same-ship"] },
+        "sharedStart": { "type": "string", "format": "date-time" },
+        "sharedEnd": { "type": "string", "format": "date-time" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventType", "overlapId", "mateUserId", "portName", "overlapType", "timestamp"]
+    },
+    "PokeEvent": {
+      "type": "object",
+      "properties": {
+        "eventType": { "type": "string", "enum": ["PORTMATE_POKE_SENT", "PORTMATE_POKE_RESPONDED"] },
+        "pokeId": { "type": "string", "format": "uuid" },
+        "overlapId": { "type": "string", "format": "uuid" },
+        "senderId": { "type": "string", "format": "uuid" },
+        "recipientId": { "type": "string", "format": "uuid" },
+        "status": { "type": "string", "enum": ["PENDING", "INTERESTED", "NOT_INTERESTED"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventType", "pokeId", "overlapId", "senderId", "recipientId", "status", "timestamp"]
+    },
+    "ConnectionEvent": {
+      "type": "object",
+      "properties": {
+        "eventType": { "type": "string", "const": "PORTMATE_CONNECTION_ESTABLISHED" },
+        "connectionId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "mateUserId": { "type": "string", "format": "uuid" },
+        "method": { "type": "string", "enum": ["QR_SCAN", "SHARE_LINK"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventType", "connectionId", "userId", "mateUserId", "method", "timestamp"]
     }
-  },
-  "required": ["bootstrap"]
+  }
 }

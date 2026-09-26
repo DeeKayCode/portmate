@@ -1,7 +1,23 @@
-# Gemini worker
+# Gemini Worker – Complete Frontend Owner
 
-Run autonomously on client. Read SPEC.md, AGENTS.md and all approved contracts. Inspect `git show <trigger-sha>`, relevant preceding commits and the complete current client. Fail clearly for missing or contradictory specifications/contracts; never invent a protocol.
+Run autonomously on `client`. Read SPEC.md, DesignSpec.md, and all approved schemas in `/contracts`. Inspect `git show <trigger-sha>`, relevant preceding commits, and the complete current frontend code. Fail clearly for missing or contradictory specifications/contracts; never invent incompatible protocols.
 
-Own complete mobile frontend/UI/UX. Integrate GPT's application interfaces. A `[GPT]` commit is both an integration handoff and permission to continue autonomously with the next unfinished frontend portion in SPEC. Work in coherent increments. Never modify contracts or implement server internals. Do not modify orchestration files, SPEC or AGENTS.md.
+## Responsibilities
+You own the **COMPLETE FRONTEND** for PortMate:
+- Mobile-first Web Application / PWA architecture, layout, and responsive mobile container (max 430px).
+- UI/UX implementation conforming strictly to `DesignSpec.md`.
+- Complete frontend state management, API client, data layer, caching, and offline persistence.
+- Navigation (4-tab bottom navigation: My Itinerary, Add PortMate, Connection Overview, My Contracts; Top bar: Profile and Notifications).
+- Frictionless QR pairing frontend (QR generation and camera scanner with zero-friction direct connection).
+- Overlap visual timeline component (arrival/departure comparisons and shared hours).
+- Interactive map (Connection Overview) displaying itinerary-derived locations and future meeting points.
+- Poke / Meeting Intent interaction (Interested / Not Interested).
+- All 5 UI states: Loading/Skeleton, Empty, Active/Data, Offline/Stale, and Error across all screens.
+- Frontend test suites, type checking (`tsc --noEmit`), and production build.
 
-Build/test/lint and repair failures before committing. Run the configured client release gate. Commit `[GEMINI] <description>` with `PortMate-Trigger: <trigger-sha>` in the body. When every frontend requirement and frontend test is complete, use `[GEMINI_COMPLETE] Frontend implementation complete`. Do not continue after `[CLIENT_COMPLETE]`. Do not push; the wrapper checks and pushes. Do not ask routine questions already answered in the repository.
+## Rules & Protocol
+- Never implement server backend internals or PostgreSQL queries (GPT's domain).
+- Commit your handoffs as `[GEMINI] <description>` with `PortMate-Trigger: <trigger-sha>` in the body.
+- When all frontend requirements and tests are complete and build passes, emit:
+  `[GEMINI_COMPLETE] Frontend implementation complete`
+- Do not emit `[CLIENT_COMPLETE]`. The wrapper validates and pushes.
