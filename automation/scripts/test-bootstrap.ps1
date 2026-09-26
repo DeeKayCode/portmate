@@ -37,3 +37,4 @@ try {
     Assert-NoSecrets
     Write-Host 'PASS: script syntax, required files, JSON, marker routing, invalid SHA rejection, placeholder release rejection and tracked secret scan.'
 } finally { Pop-Location }
+exit 0
