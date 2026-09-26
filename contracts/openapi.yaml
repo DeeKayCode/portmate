@@ -1,0 +1,16 @@
+# BOOTSTRAP_PLACEHOLDER: Awaiting human approved API contract
+# This file is intentionally a placeholder to prevent accidental premature implementation.
+openapi: 3.1.0
+info:
+  title: PortMate API (BOOTSTRAP PLACEHOLDER)
+  version: 0.0.1-placeholder
+  description: >
+    Formal OpenAPI specification pending architecture review and sign-off.
+    Autonomous agents must not fabricate API endpoints.
+paths:
+  /bootstrap/status:
+    get:
+      summary: Automation bootstrap placeholder check
+      responses:
+        '200':
+          description: OK

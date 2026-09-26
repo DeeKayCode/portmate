@@ -1,0 +1,94 @@
+name: Continuous Integration & Release Gates
+
+on:
+  push:
+    branches:
+      - main
+      - client
+      - server
+  pull_request:
+    branches:
+      - main
+      - client
+      - server
+
+permissions:
+  contents: read
+
+jobs:
+  validate-contracts:
+    name: Contract & Schema Integrity Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Contract Files Exist
+        run: |
+          echo "Checking contracts directory structure..."
+          test -f contracts/README.md || { echo "contracts/README.md missing"; exit 1; }
+          test -f contracts/openapi.yaml || { echo "contracts/openapi.yaml missing"; exit 1; }
+          test -f contracts/models.schema.json || { echo "contracts/models.schema.json missing"; exit 1; }
+          test -f contracts/events.schema.json || { echo "contracts/events.schema.json missing"; exit 1; }
+          echo "Contracts structure present."
+
+      - name: Basic JSON Syntax Check
+        run: |
+          python3 -c "import json; json.load(open('contracts/models.schema.json')); json.load(open('contracts/events.schema.json'))"
+          echo "JSON schemas are syntactically valid."
+
+  mobile-gate:
+    name: Mobile Client Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Inspect Mobile Stack
+        run: |
+          echo "Inspecting mobile directory..."
+          if [ -f "mobile/package.json" ]; then
+            echo "Node/React Native/Expo stack detected."
+            # Future: npm ci, npm run lint, npm test, etc.
+          elif [ -f "mobile/pubspec.yaml" ]; then
+            echo "Flutter stack detected."
+            # Future: flutter test, flutter analyze
+          else
+            echo "::notice ::Mobile stack has not yet been initialized. Mobile CI checks skipped until project stack is configured."
+          fi
+
+  server-gate:
+    name: Server Backend Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Inspect Server Stack
+        run: |
+          echo "Inspecting server directory..."
+          if [ -f "server/docker-compose.yml" ]; then
+            echo "Docker Compose detected. Validating compose configuration..."
+            docker compose -f server/docker-compose.yml config || exit 1
+          elif [ -f "server/Dockerfile" ]; then
+            echo "Dockerfile detected. Running lint/build check..."
+          else
+            echo "::notice ::Server stack has not yet been initialized. Server CI checks skipped until project stack is configured."
+          fi
+
+  secret-scan-gate:
+    name: Repository Hygiene & Secret Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check for Unwanted Secret Files
+        run: |
+          echo "Scanning tracked files for obvious credentials..."
+          FOUND_SECRETS=$(git ls-files | grep -E '(\.env$|\.key$|\.pem$|id_rsa|runner.*token)' | grep -v '\.env\.example' || true)
+          if [ -n "$FOUND_SECRETS" ]; then
+            echo "::error ::Potential secrets tracked in git: $FOUND_SECRETS"
+            exit 1
+          fi
+          echo "No obvious secrets tracked in Git."

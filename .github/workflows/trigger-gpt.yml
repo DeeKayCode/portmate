@@ -1,0 +1,32 @@
+name: Trigger GPT Worker
+
+on:
+  push:
+    branches:
+      - client
+
+permissions:
+  contents: write
+
+concurrency:
+  group: client-gpt-worker
+  cancel-in-progress: false
+
+jobs:
+  gpt-handoff:
+    name: Execute GPT Application Layer Increment
+    if: startsWith(github.event.head_commit.message, '[GEMINI]') || startsWith(github.event.head_commit.message, '[GEMINI_COMPLETE]')
+    runs-on: [self-hosted, gpt-worker]
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: client
+          fetch-depth: 0
+
+      - name: Invoke GPT Worker Script
+        shell: pwsh
+        run: |
+          ./automation/scripts/invoke-gpt-worker.ps1 -TriggerSha "${{ github.sha }}" -RepoPath "${{ github.workspace }}"

@@ -1,0 +1,32 @@
+name: Trigger Gemini Worker
+
+on:
+  push:
+    branches:
+      - client
+
+permissions:
+  contents: write
+
+concurrency:
+  group: client-gemini-worker
+  cancel-in-progress: false
+
+jobs:
+  gemini-handoff:
+    name: Execute Gemini Mobile Frontend Increment
+    if: startsWith(github.event.head_commit.message, '[GPT]')
+    runs-on: [self-hosted, gemini-worker]
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: client
+          fetch-depth: 0
+
+      - name: Invoke Gemini Worker Script
+        shell: pwsh
+        run: |
+          ./automation/scripts/invoke-gemini-worker.ps1 -TriggerSha "${{ github.sha }}" -RepoPath "${{ github.workspace }}"

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PortMateEventsPlaceholder",
+  "description": "BOOTSTRAP_PLACEHOLDER: Pending formal event payloads approval. Agents must not fabricate event payloads.",
+  "type": "object",
+  "properties": {
+    "bootstrap": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "required": ["bootstrap"]
+}

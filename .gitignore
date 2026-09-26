@@ -1,0 +1,42 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.token
+*.p12
+
+# Automation lock and temporary runtime state
+automation/state/*.lock
+automation/state/*.pid
+automation/state/*.tmp
+!automation/state/.gitkeep
+
+# GitHub Actions runner local directories (if kept near repo)
+actions-runner*/
+_work/
+*.runner
+
+# OS artifacts
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor / IDE artifacts
+.idea/
+.vscode/
+*.suo
+*.user
+
+# Build outputs & dependencies (placeholders for future stack)
+node_modules/
+dist/
+build/
+.expo/
+.dart_tool/
+__pycache__/
+*.pyc
+bin/
+obj/
