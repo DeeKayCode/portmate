@@ -71,7 +71,11 @@ try {
         foreach ($file in $files) {
             if ($handshake) {
                 if ($file -ne 'automation/handshake/state.json') { throw 'Handshake changed other files.' }
-            } elseif ($file -notmatch '^mobile/') { throw "Worker changed protected path: $file" }
+            } elseif ($Role -eq 'gemini') {
+                if ($file -notmatch '^mobile/') { throw "Gemini changed protected path: $file" }
+            } elseif ($Role -eq 'gpt') {
+                if ($file -notmatch '^(server/|mobile/)') { throw "GPT changed protected path: $file" }
+            }
         }
         Assert-NoSecrets $commit
     }
