@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+node_modules/
+automation/state/*
+!automation/state/.gitkeep
+.runner
+.credentials*
+_diag/

@@ -1,0 +1,26 @@
+name: Trigger GPT
+on:
+  push:
+    branches: [client]
+permissions:
+  contents: read
+concurrency:
+  group: portmate-gpt-client
+  cancel-in-progress: false
+jobs:
+  worker:
+    if: ${{ vars.PORTMATE_AUTOMATION_ENABLED == 'true' && (startsWith(github.event.head_commit.message, '[GEMINI] ') || startsWith(github.event.head_commit.message, '[GEMINI_COMPLETE] ')) }}
+    runs-on: [self-hosted, Windows, X64, gpt-worker]
+    timeout-minutes: 45
+    steps:
+      - name: Process handoff in persistent checkout
+        shell: pwsh
+        env:
+          PORTMATE_REPO: ${{ vars.GPT_REPOSITORY_PATH }}
+          PORTMATE_TRIGGER_SHA: ${{ github.sha }}
+          PORTMATE_TRIGGER_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:PORTMATE_REPO) { throw 'Worker repository path is not configured.' }
+          & (Join-Path $env:PORTMATE_REPO 'automation/scripts/invoke-gpt-worker.ps1')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
