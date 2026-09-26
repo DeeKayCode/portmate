@@ -32,10 +32,16 @@ try {
         $registration = Get-Content (Join-Path $RunnerDirectory '.runner') -Raw | ConvertFrom-Json
         if ($registration.gitHubUrl -ne 'https://github.com/DeeKayCode/portmate') { throw 'Runner belongs to another repository.' }
         $serviceFile = Join-Path $RunnerDirectory '.service'
-        if (!(Test-Path $serviceFile)) { throw 'Runner service not configured.' }
-        $service = Get-Service -Name (Get-Content $serviceFile -Raw).Trim() -ErrorAction Stop
-        if ($service.Status -ne 'Running') { throw 'Runner service is stopped.' }
-        Write-Host 'Local service is running; confirm online status and role label in GitHub.'
+        if (Test-Path $serviceFile) {
+            $service = Get-Service -Name (Get-Content $serviceFile -Raw).Trim() -ErrorAction Stop
+            if ($service.Status -ne 'Running') { throw 'Runner service is stopped.' }
+            Write-Host 'Local runner service is running; confirm online status and role label in GitHub.'
+        } else {
+            $listener = Get-CimInstance Win32_Process -Filter "Name = 'Runner.Listener.exe'" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -like "*$RunnerDirectory*" }
+            if (!$listener) { throw 'Runner is registered but neither its Windows service nor its listener process is running.' }
+            Write-Host 'Registered runner listener is running interactively; configure a Windows service for restart persistence.'
+        }
     }
 } finally { Pop-Location }
 if ($failed) { exit 1 }
