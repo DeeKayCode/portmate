@@ -22,7 +22,11 @@ try {
         } elseif ($env:CI -eq 'true') {
             Push-Location mobile
             try {
-                npm ci
+                if (Test-Path 'package-lock.json') {
+                    npm ci
+                } else {
+                    npm install --no-audit --no-fund
+                }
                 npm run typecheck
                 if ($LASTEXITCODE -ne 0) { throw "Client typecheck failed." }
                 npm run build
