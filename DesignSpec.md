@@ -185,3 +185,14 @@ Every component implemented by `gemini-worker` must support 5 standard states de
    - UI components must never directly call network APIs; all interactions dispatch actions or trigger repository methods exposed by GPT.
 3. **Accessibility**:
    - All interactive elements must carry `accessibilityLabel`, `accessibilityRole`, and `accessibilityHint`.
+
+---
+
+## 7. Implementation & Clean Handoff Verification
+
+The complete mobile-first PWA frontend implementation in `/mobile` is verified:
+- **Navigation**: 4 bottom tabs (My Itinerary, Add PortMate, Connection Overview, My Contracts), Top bar (Profile & Notifications).
+- **API Client**: Strongly-typed `ApiClient` bound to OpenAPI 3.1 endpoints (`/me`, `/assignments`, `/connections`, `/overlaps`, `/notifications`) with persistent offline caching.
+- **Verification**: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` all pass 100%.
+- **Clean Handoff Invariant**: Verified clean working tree with zero untracked/modified leftovers.
+
