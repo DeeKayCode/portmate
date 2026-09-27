@@ -24,6 +24,8 @@ export const App: React.FC = () => {
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
 
   useEffect(() => {
+    store.syncFromServer();
+
     const unsubscribe = store.subscribe(() => {
       setUser(store.getUser());
       setContracts(store.getContracts());
@@ -32,7 +34,10 @@ export const App: React.FC = () => {
       setPortCalls(store.getPortCalls());
     });
 
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => {
+      setIsOffline(false);
+      store.syncFromServer();
+    };
     const handleOffline = () => setIsOffline(true);
 
     window.addEventListener('online', handleOnline);

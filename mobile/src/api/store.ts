@@ -1,4 +1,5 @@
 import { User, Contract, PortCall, Connection, NotificationItem } from '../types';
+import { apiClient, ApiProfile, ApiAssignment, ApiConnection, ApiNotification } from './client';
 
 const STORAGE_KEYS = {
   USER: 'portmate_user',
@@ -134,6 +135,25 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
   },
 ];
 
+function mapProfile(apiProfile: ApiProfile): User {
+  const labelMap: Record<string, string> = {
+    recently: 'Active recently',
+    hours_ago: 'Active 2h ago',
+    yesterday: 'Active yesterday',
+    older: 'Active 3d ago',
+  };
+  return {
+    id: apiProfile.id,
+    email: `${apiProfile.username}@cruises.org`,
+    username: apiProfile.username,
+    displayName: apiProfile.displayName || apiProfile.username,
+    role: 'crew',
+    avatarUrl: apiProfile.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${apiProfile.username}`,
+    nearbyRadiusKm: 50,
+    lastActiveAt: labelMap[apiProfile.lastActiveLabel] || 'Active recently',
+  };
+}
+
 export class PortMateStore {
   private user: User;
   private contracts: Contract[];
@@ -188,6 +208,68 @@ export class PortMateStore {
   public updateUser(partial: Partial<User>) {
     this.user = { ...this.user, ...partial };
     this.save();
+    apiClient.updateMe({
+      username: partial.username,
+      displayName: partial.displayName ?? null,
+      avatarUrl: partial.avatarUrl ?? null,
+    }).catch(() => {});
+  }
+
+  // Backend Synchronization
+  public async syncFromServer(): Promise<boolean> {
+    try {
+      const me = await apiClient.getMe();
+      if (me) {
+        this.user = {
+          ...this.user,
+          id: me.id,
+          username: me.username,
+          displayName: me.displayName || me.username,
+          avatarUrl: me.avatarUrl || this.user.avatarUrl,
+        };
+      }
+
+      const assignments = await apiClient.listAssignments();
+      if (assignments && assignments.length > 0) {
+        this.contracts = assignments.map((a: ApiAssignment) => ({
+          id: a.id,
+          userId: this.user.id,
+          cruiseLine: a.companyId,
+          shipName: a.shipId,
+          startDate: a.startDate,
+          endDate: a.endDate,
+          status: new Date(a.endDate) < new Date() ? 'past' : new Date(a.startDate) <= new Date() ? 'active' : 'upcoming',
+        }));
+      }
+
+      const connections = await apiClient.listConnections();
+      if (connections) {
+        this.connections = connections.map((c: ApiConnection) => ({
+          id: c.id,
+          mate: mapProfile(c.profile),
+          connectedAt: c.createdAt,
+        }));
+      }
+
+      const notifs = await apiClient.listNotifications();
+      if (notifs) {
+        this.notifications = notifs.map((n: ApiNotification) => ({
+          id: n.id,
+          type: n.type === 'poke_received' ? 'POKE_RECEIVED' : n.type === 'poke_response' ? 'POKE_RESPONSE' : 'OVERLAP_FOUND',
+          title: n.type === 'poke_received' ? 'Meeting Intent Received' : n.type === 'poke_response' ? 'Meeting Intent Response' : 'Upcoming Overlap',
+          body: `Notification for PortMate event`,
+          read: n.read,
+          createdAt: n.createdAt,
+          data: { overlapId: n.overlapId },
+        }));
+      }
+
+      this.save();
+      return true;
+    } catch {
+      // Offline fallback: keep existing local cache intact
+      return false;
+    }
   }
 
   // Contracts
@@ -203,12 +285,26 @@ export class PortMateStore {
     };
     this.contracts = [newContract, ...this.contracts];
     this.save();
+
+    apiClient.createAssignment({
+      companyId: contract.cruiseLine,
+      shipId: contract.shipName,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+    }).then(res => {
+      if (res?.id) {
+        newContract.id = res.id;
+        this.save();
+      }
+    }).catch(() => {});
+
     return newContract;
   }
 
   public deleteContract(id: string) {
     this.contracts = this.contracts.filter(c => c.id !== id);
     this.save();
+    apiClient.deleteAssignment(id).catch(() => {});
   }
 
   // Connections
