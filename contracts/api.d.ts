@@ -562,6 +562,7 @@ export interface operations {
                 };
             };
             409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     login: {

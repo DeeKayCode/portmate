@@ -18,7 +18,7 @@ paths:
       security: []
       operationId: register
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RegisterRequest'}}}}
-      responses: {'202': {description: Email verification required, content: {application/json: {schema: {$ref: '#/components/schemas/VerificationPending'}}}}, '409': {$ref: '#/components/responses/Problem'}}
+      responses: {'202': {description: Email verification required, content: {application/json: {schema: {$ref: '#/components/schemas/VerificationPending'}}}}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
   /auth/login:
     post:
       security: []

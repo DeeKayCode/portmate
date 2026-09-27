@@ -60,6 +60,7 @@ export function buildApp(config: AppConfig, db?: Database) {
     catch { return reply.status(503).send({ status: "ok" as const, database: "unhealthy" as const }); }
   });
   app.post("/api/v1/auth/register", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (request, reply) => {
+    if (!config.SMTP_URL && config.NODE_ENV !== "test") throw app.httpErrors.serviceUnavailable("Email verification delivery is not configured");
     const body = z.object({ email: z.string().email(), password: z.string().min(12), username }).parse(request.body); const id = randomUUID(); const token = opaqueToken();
     const passwordHash = await bcrypt.hash(body.password, 12);
     await transaction(requireDb(), async client => {

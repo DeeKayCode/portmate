@@ -7,6 +7,19 @@ import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import type { Database } from "../src/db.js";
 
+test('registration without email delivery rejects before creating an unreachable account', async t => {
+  let queries = 0;
+  const db: Database = { query: async () => { queries++; throw new Error('Database must not be touched'); } };
+  const app = buildApp(loadConfig({ NODE_ENV: 'development', LOG_LEVEL: 'silent' }), db);
+  t.after(() => app.close());
+  const response = await app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: {
+    email: 'sailor@example.com', username: 'sailor', password: 'correct horse battery staple',
+  } });
+  assert.equal(response.statusCode, 503);
+  assert.equal(queries, 0);
+  assert.equal(response.headers['x-portmate-test-verification-token'], undefined);
+});
+
 test("email accounts cannot log in until a one-time verification token is consumed", async () => {
   const sql = await readFile(new URL("../../migrations/001_initial.sql", import.meta.url), "utf8");
   const memory = newDb(); memory.public.none(sql);

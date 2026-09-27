@@ -1,5 +1,9 @@
 # Contract changelog
 
+## Registration delivery availability — 2026-09-27
+
+- Registration returns 503 when verification email delivery is not configured, before creating an account. The test environment retains its test-only verification header.
+
 ## Authority and consistency correction
 
 - OpenAPI is the canonical HTTP contract. All API models and shared TypeScript types are now generated and freshness-checked.
