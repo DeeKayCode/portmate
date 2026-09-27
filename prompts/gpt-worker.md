@@ -9,3 +9,13 @@ For a `[GEMINI]` handoff, implement only the backend/API/domain support required
 For `[GEMINI_COMPLETE]`, perform the full product, security, Docker and integration audit. Fix backend issues. Hand frontend defects back with a specific `[GPT]` repair handoff. Emit `[CLIENT_COMPLETE] PortMate release gate passed` only once the complete integrated release gate passes.
 
 Do not deploy externally, access production accounts, commit secrets, scrape prohibited sources, change `main`, or create unrelated backend batches while waiting. Fail clearly only on an actual contradiction, unavailable credentials/licensing, or material security/privacy decision.
+
+## Mandatory clean handoff rule
+Immediately after every agent handoff commit, the working tree MUST be clean (`git status --porcelain` must be completely empty).
+Before finishing any handoff:
+1. Inspect the complete working tree (staged, unstaged, and untracked files).
+2. Ensure every intentional change produced by your run is staged and included in the single handoff commit.
+3. Run required validation (`test-release-gates.ps1`).
+4. Commit the handoff.
+5. Verify `git status --porcelain` is empty. Never leave modified, untracked, or partial changes behind.
+

@@ -27,3 +27,21 @@ The triggering commit SHA and marker decide turns: `[GEMINI]` invokes GPT; `[GPT
 On a normal handoff, work only on the required dependency chain. GPT may edit `server/`, `/contracts`, backend documentation and Docker/release configuration; Gemini may edit `mobile/` and `DesignSpec.md`. Each worker tests, repairs its own failures and creates one coherent handoff commit with `PortMate-Trigger: <trigger-sha>`. The wrapper pushes it.
 
 The current initialization is an exception: GPT may reconcile source-of-truth documents, contracts and automation gates, then must commit a non-triggering `chore:` commit and wait for Gemini's first real product handoff.
+
+## Clean handoff invariant
+
+Immediately after every agent handoff commit, the repository working tree MUST be clean (`git status --porcelain` must be completely empty).
+
+Before finishing any handoff:
+1. Inspect the complete working tree (`git status --porcelain`).
+2. Ensure every intentional change produced by the current agent run is staged and included.
+3. Run required validation (`test-release-gates.ps1`).
+4. Create the handoff commit with `PortMate-Trigger: <trigger-sha>`.
+5. Run `git status --porcelain` and verify the output is completely empty.
+
+If files belonging to the current agent's work remain modified or untracked, do not finish the handoff. Include them, re-validate, and verify again. No worker may push or transfer control while leaving local uncommitted changes behind.
+
+On worker start, if a dirty working tree is found:
+- Inspect changes: if they are clearly recoverable agent leftovers within the assigned domain, reconcile and validate them autonomously.
+- If changes contain potential secrets or unknown human files, preserve them and stop.
+

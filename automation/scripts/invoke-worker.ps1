@@ -1,6 +1,64 @@
 #requires -Version 7.0
 param([Parameter(Mandatory)][ValidateSet('gpt','gemini')][string]$Role, [string]$TriggerSha, [string]$RepositoryPath, [string]$TriggerMessage)
 . "$PSScriptRoot/common.ps1"
+function Reconcile-PreStartWorkingTree([string]$Role) {
+    $dirty = @(Git status --porcelain --untracked-files=all)
+    if ($dirty.Count -eq 0) { return }
+
+    # 1. Reject any potential secrets immediately
+    foreach ($entry in $dirty) {
+        $path = $entry.Substring(3).Trim()
+        if ($path -match '(^|/)(\.env($|\.(?!example$))|\.credentials|\.runner$)|\.(pem|key|p12|pfx)$') {
+            throw "Dirty working tree contains potential secret file: $path. Preserving and halting."
+        }
+    }
+
+    # 2. Check for unknown/human files outside PortMate repository structure:
+    $knownStructure = '^(mobile/|server/|contracts/|docs/|automation/|prompts/|\.github/|compose\.yaml$|\.env\.example$|README\.md$|SPEC\.md$|DesignSpec\.md$|\.gitattributes$|\.gitignore$)'
+    foreach ($entry in $dirty) {
+        $path = $entry.Substring(3).Trim()
+        if ($path -notmatch $knownStructure) {
+            throw "Dirty working tree contains unknown or human-authored file: $path. Preserving and halting."
+        }
+    }
+
+    # 3. Clean files that have zero diff against HEAD (e.g. line endings / stat changes):
+    foreach ($entry in $dirty) {
+        $status = $entry.Substring(0, 2)
+        $path = $entry.Substring(3).Trim()
+        if ($status -match '[ M]') {
+            & git.exe diff --quiet HEAD -- $path
+            if ($LASTEXITCODE -eq 0) {
+                & git.exe checkout HEAD -- $path
+            }
+        }
+    }
+
+    # Re-evaluate remaining dirty files
+    $remaining = @(Git status --porcelain --untracked-files=all)
+    if ($remaining.Count -eq 0) { return }
+
+    # If remaining files belong to the active role's domain, the active agent can autonomously incorporate them
+    $rolePattern = if ($Role -eq 'gemini') { '^(mobile/|DesignSpec\.md$)' } else { '^(server/|contracts/|docs/|compose\.yaml$|\.env\.example$|README\.md$)' }
+    foreach ($entry in $remaining) {
+        $path = $entry.Substring(3).Trim()
+        if ($path -notmatch $rolePattern) {
+            $details = $remaining -join "`n  "
+            throw "Dirty working tree contains unresolved modifications outside $Role domain:`n  $details`nPreserving and halting."
+        }
+    }
+
+    Write-Host "Notice: $Role worker started with recoverable changes within its domain. Reconciling autonomously..."
+}
+
+function Assert-CleanHandoff([string]$Role) {
+    $dirty = @(Git status --porcelain --untracked-files=all)
+    if ($dirty.Count -gt 0) {
+        $details = $dirty -join "`n  "
+        throw "INCOMPLETE HANDOFF DETECTED: Agent '$Role' left uncommitted or untracked changes:`n  $details`nEvery intentional change must be staged and committed. Working tree must be clean before handoff."
+    }
+}
+
 $lock = $null
 $location = Get-Location
 try {
@@ -11,7 +69,7 @@ try {
     $gitDir = Git rev-parse --absolute-git-dir
     # Same lock for both roles; OS releases the handle even after process termination.
     $lock = [IO.File]::Open((Join-Path $gitDir 'portmate-worker.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
-    Assert-Clean
+    Reconcile-PreStartWorkingTree -Role $Role
     if ((Git branch --show-current) -ne 'client') { throw 'Worker checkout must already be on client.' }
     Git fetch origin client
     Git cat-file -e "$TriggerSha^{commit}"
@@ -55,7 +113,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Gemini failed.' }
         }
     }
-    Assert-Clean
+    Assert-CleanHandoff -Role $Role
     Assert-Remote
     if ((Git branch --show-current) -ne 'client') { throw 'Agent changed branch.' }
     & git.exe merge-base --is-ancestor $before HEAD
@@ -80,7 +138,7 @@ try {
         $component = if ($Role -eq 'gpt') { 'server' } else { 'client' }
         & "$PSScriptRoot/test-release-gates.ps1" -Component $component
         if ($LASTEXITCODE -ne 0) { throw 'Client gate failed.' }
-        Assert-Clean
+        Assert-CleanHandoff -Role $Role
     }
     Git fetch origin client
     if ((Git rev-parse origin/client) -ne $before) { throw 'Remote advanced; preserve local result for manual integration.' }

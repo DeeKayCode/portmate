@@ -12,7 +12,7 @@
     "migrate": "node dist/migrate.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test --test-isolation=none .test-dist/test/**/*.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/**/*.test.js",
     "lint": "eslint .",
     "validate:contracts": "node scripts/validate-contracts.mjs"
   },

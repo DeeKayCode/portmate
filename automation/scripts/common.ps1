@@ -1,5 +1,13 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Ensure registry PATH is active for non-interactive runner processes
+$userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+$machinePath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+if ($userPath -or $machinePath) {
+    $env:PATH = "$userPath;$machinePath;$env:PATH"
+}
+
 function Git {
     $result = & git.exe @args
     if ($LASTEXITCODE -ne 0) { throw "Git failed: $($args[0])" }
@@ -10,7 +18,11 @@ function Assert-Remote {
     if ($remote -notmatch '^(https://github\.com/DeeKayCode/portmate(?:\.git)?|git@github\.com:DeeKayCode/portmate(?:\.git)?)$') { throw 'Wrong repository remote.' }
 }
 function Assert-Clean {
-    if (Git status --porcelain --untracked-files=all) { throw 'Dirty working tree; preserve and review changes manually.' }
+    $dirty = @(Git status --porcelain --untracked-files=all)
+    if ($dirty.Count -gt 0) {
+        $details = $dirty -join "`n  "
+        throw "Dirty working tree; preserve and review changes manually:`n  $details"
+    }
 }
 function Assert-NoSecrets([string]$Revision = 'HEAD') {
     $paths = @(Git ls-tree -r --name-only $Revision)
