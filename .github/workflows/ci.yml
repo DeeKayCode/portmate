@@ -26,6 +26,7 @@ jobs:
       - uses: actions/setup-node@1e60f620b9541d2463c0b4d3e2a3c5b2c6287cf2 # v4.0.3
         with: {node-version: 22, cache: npm, cache-dependency-path: server/package-lock.json}
       - run: npm --prefix server ci
+      - run: npm --prefix server audit --omit=dev --audit-level=high
       - run: npm --prefix server run validate:contracts
       - run: npm --prefix server run typecheck
       - run: npm --prefix server run lint
@@ -43,12 +44,19 @@ jobs:
         if: steps.mobile.outputs.present == 'true'
         with: {node-version: 22, cache: npm, cache-dependency-path: mobile/package-lock.json}
       - if: steps.mobile.outputs.present == 'true'
-        run: npm --prefix mobile ci && npm --prefix mobile run lint && npm --prefix mobile run typecheck && npm --prefix mobile test && npm --prefix mobile run build
+        run: npm --prefix mobile ci && npm --prefix mobile audit --omit=dev --audit-level=high && npm --prefix mobile run lint && npm --prefix mobile run typecheck && npm --prefix mobile test && npm --prefix mobile run build
       - if: steps.mobile.outputs.present != 'true'
         run: echo "::notice::Mobile PWA will be validated after Gemini initializes it."
+  docker:
+    needs: [backend, mobile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: {persist-credentials: false}
+      - run: docker compose build
   release:
     if: startsWith(github.event.head_commit.message, '[CLIENT_COMPLETE] ')
-    needs: [bootstrap, backend, mobile]
+    needs: [bootstrap, backend, mobile, docker]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

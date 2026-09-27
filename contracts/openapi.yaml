@@ -93,7 +93,7 @@ components:
     Username: {type: string, minLength: 3, maxLength: 32, pattern: '^[A-Za-z0-9_]+$'}
     Profile: {type: object, required: [id, username, emailVerified], properties: {id: {type: string, format: uuid}, username: {$ref: '#/components/schemas/Username'}, displayName: {type: string, maxLength: 80}, avatarUrl: {type: string, format: uri}, emailVerified: {type: boolean}, lastActiveLabel: {enum: [recently, hours_ago, yesterday, older]}}}
     ProfileUpdate: {type: object, properties: {username: {$ref: '#/components/schemas/Username'}, displayName: {type: string, maxLength: 80}, avatarUrl: {type: string, format: uri}}}
-    Settings: {type: object, required: [nearbyPortThresholdKm], properties: {nearbyPortThresholdKm: {type: number, minimum: 1, maximum: 500, default: 50}}}
+    Settings: {type: object, required: [nearbyPortThresholdKm], properties: {nearbyPortThresholdKm: {type: number, minimum: 1, maximum: 500, default: 50}, emailNotifications: {type: boolean, default: true}}}
     CruiseCompany: {type: object, required: [id, name], properties: {id: {type: string}, name: {type: string}}}
     Ship: {type: object, required: [id, name, company], properties: {id: {type: string}, name: {type: string}, company: {$ref: '#/components/schemas/CruiseCompany'}}}
     AssignmentInput: {type: object, required: [companyId, shipId, startDate, endDate], properties: {companyId: {type: string}, shipId: {type: string}, startDate: {type: string, format: date}, endDate: {type: string, format: date}}}

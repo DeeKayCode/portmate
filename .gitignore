@@ -22,6 +22,7 @@ Desktop.ini
 *.suo
 *.user
 dist/
+.test-dist/
 build/
 .expo/
 .dart_tool/

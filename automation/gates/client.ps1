@@ -11,6 +11,8 @@ if (!(Test-Path 'mobile/package.json')) {
 }
 & $npm --prefix mobile ci
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $npm --prefix mobile audit --omit=dev --audit-level=high
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 foreach ($command in @('lint', 'typecheck', 'test', 'build')) {
     & $npm --prefix mobile run $command
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -26,12 +26,20 @@ npm --prefix server test
 npm --prefix server run dev
 ```
 
+Set `DATABASE_URL` and `JWT_SECRET` first. The server applies the idempotent SQL migration at startup. The deterministic cruise provider supplies development/test itinerary data; no external cruise account is required.
+
+The frontend currently contains Gemini's complete local-data PWA handoff. Its next cycle is to replace the local store with the stable endpoints in `contracts/openapi.yaml`.
+
 ## Docker baseline
 
 ```sh
 cp .env.example .env
-# Set a non-default POSTGRES_PASSWORD before any non-local deployment.
+# Set unique POSTGRES_PASSWORD and JWT_SECRET values.
 docker compose up -d --build
 ```
 
-The current initialization exposes only the health endpoint. Domain modules, migrations and production credential-backed integrations are added through the Gemini ↔ GPT handoff workflow.
+Open `http://localhost:3000`. The web container serves the PWA and proxies `/api/` to the backend. Check backend health at `/api/v1/health`.
+
+Optional integrations use `GOOGLE_CLIENT_ID` and `SMTP_URL`. Without SMTP, in-app notifications remain persistent but outbound email is not sent. Production cruise data requires a separately licensed provider adapter; the repository does not scrape third-party sites.
+
+Stop or restart with `docker compose down` and `docker compose restart`. Update with `git pull && docker compose up -d --build`. Back up with `docker compose exec -T db pg_dump -U portmate portmate > portmate.sql`; restore into an empty database with `docker compose exec -T db psql -U portmate portmate < portmate.sql`. Keep `.env` and backups outside version control.
