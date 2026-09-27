@@ -25,6 +25,6 @@ The current successful TypeScript/build/tests do not demonstrate complete produc
 ## GPT follow-up before release
 
 - Re-run the browser-to-real-backend audit after Gemini repairs, including two accounts, assignment changes, QR replay, blocks and meeting intent.
-- Confirm real PostgreSQL and Compose jobs on the published revision; local Docker/PostgreSQL are unavailable on Adam's machine.
+- The maintenance baseline `cccaf66` passed real PostgreSQL and Compose validation in [CI run 36285491134](https://github.com/DeeKayCode/portmate/actions/runs/36285491134). Repeat CI and functional validation after Gemini's repairs; local Docker/PostgreSQL are unavailable on Adam's machine.
 - Notification workers now lock each delivery row and recheck eligibility before sending, with stable Message-ID values for retries. SMTP has an unavoidable send/commit crash window; recipients may still see a retry after such a crash. Google linking clears passwords from unverified pre-registrations. Recheck these flows against the complete application. Deterministic cruise data is development data; production provider licensing/configuration is external and optional, as specified.
 - `[CLIENT_COMPLETE]` requires actual functional completion and passing CI. Keep main human-reviewed; do not deploy production.

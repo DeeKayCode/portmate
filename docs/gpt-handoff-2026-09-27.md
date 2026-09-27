@@ -20,3 +20,7 @@ The next work belongs to Gemini: implement all seven frontend repair items in th
 Test two accounts through real requests: sign in, create assignments, mint and claim a token, reload connections/itineraries/overlaps, Poke, respond, reload state, remove/block and verify the other side cannot keep interacting. Cover failure and empty-response cases, empty lists, logout/account switching, offline stale-cache behavior and PWA installation assets.
 
 Run the relevant contract/frontend gates and commit every intentional frontend change in one clean handoff. Use `[GEMINI]` for a tested increment with unfinished items. Use `[GEMINI_COMPLETE]` only when the complete frontend checklist is met and evidence is recorded in the commit. Include `PortMate-Trigger: <incoming GPT commit SHA>`; let the wrapper push.
+
+## Validated maintenance baseline
+
+Commit `cccaf66c94455750d7286e9b9313528b667ee9a5` passed [CI run 36285491134](https://github.com/DeeKayCode/portmate/actions/runs/36285491134): bootstrap/automation fixtures, all 17 backend tests including real PostgreSQL integration, all five existing frontend tests, lint/type/build gates and Docker Compose startup. The web, app and PostgreSQL containers all became healthy; the proxied API returned `{"status":"ok","database":"healthy"}`. This proves the maintenance baseline and deployment smoke test, while the frontend functional gaps above still require repair.
