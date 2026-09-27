@@ -1,11 +1,13 @@
 /**
- * PortMate API Client for /api/v1 endpoints adhering to OpenAPI contracts
+ * PortMate API Client for /api/v1 endpoints adhering strictly to canonical OpenAPI contracts
  */
 
 const API_BASE = '/api/v1';
 
 import type { components } from '../../../contracts/api';
+
 export type ApiProfile = components['schemas']['Profile'];
+export type ApiProfileUpdate = components['schemas']['ProfileUpdate'];
 export type ApiSession = components['schemas']['Session'];
 export type ApiSettings = components['schemas']['Settings'];
 export type ApiCompany = components['schemas']['CruiseCompany'];
@@ -17,9 +19,12 @@ export type ApiItinerary = components['schemas']['Itinerary'];
 export type ApiConnection = components['schemas']['Connection'];
 export type ApiConnectionToken = components['schemas']['ConnectionToken'];
 export type ApiOverlap = components['schemas']['Overlap'];
+export type ApiMeetingIntent = components['schemas']['MeetingIntent'];
+export type ApiMeetingIntentResponse = components['schemas']['MeetingIntentResponse'];
 export type ApiNotification = components['schemas']['Notification'];
+export type ApiVerificationPending = components['schemas']['VerificationPending'];
 
-class ApiClient {
+export class ApiClient {
   private token: string | null = null;
 
   constructor() {
@@ -44,17 +49,33 @@ class ApiClient {
   }
 
   public getToken(): string | null {
+    if (!this.token) {
+      try {
+        this.token = localStorage.getItem('portmate_access_token');
+      } catch {
+        this.token = null;
+      }
+    }
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  public logout() {
+    this.setToken(null);
+  }
+
+  public async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       Accept: 'application/json',
       ...((options.headers as Record<string, string>) || {}),
     };
 
-    if (this.token) {
+    // CRITICAL: Only set Content-Type if there is an actual request body!
+    // Fastify rejects requests with Content-Type: application/json when body is empty.
+    if (options.body && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    if (this.token && !headers['Authorization']) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
@@ -69,16 +90,37 @@ class ApiClient {
         const errorJson = await response.json();
         errorMessage = errorJson.detail || errorJson.title || errorMessage;
       } catch {
-        // use default message
+        // use default status message
       }
+
+      if (response.status === 401) {
+        // Clear invalid/expired token
+        this.setToken(null);
+      }
+
       throw new Error(errorMessage);
     }
 
+    // Handle empty response bodies (204 No Content, 201 Created with empty body, Content-Length: 0)
     if (response.status === 204) {
       return {} as T;
     }
 
-    return response.json();
+    const contentLength = response.headers.get('content-length');
+    if (contentLength === '0') {
+      return {} as T;
+    }
+
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      return {} as T;
+    }
+
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return {} as T;
+    }
   }
 
   // Health
@@ -96,8 +138,8 @@ class ApiClient {
     return session;
   }
 
-  public async register(email: string, password: string, username: string): Promise<components['schemas']['VerificationPending']> {
-    return this.request('/auth/register', {
+  public async register(email: string, password: string, username: string): Promise<ApiVerificationPending> {
+    return this.request<ApiVerificationPending>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, username }),
     });
@@ -124,7 +166,7 @@ class ApiClient {
     return this.request('/me');
   }
 
-  public async updateMe(profile: components['schemas']['ProfileUpdate']): Promise<ApiProfile> {
+  public async updateMe(profile: ApiProfileUpdate): Promise<ApiProfile> {
     return this.request('/me', {
       method: 'PATCH',
       body: JSON.stringify(profile),
@@ -136,14 +178,14 @@ class ApiClient {
     return this.request('/settings');
   }
 
-  public async updateSettings(settings: ApiSettings): Promise<ApiSettings> {
+  public async updateSettings(settings: Partial<ApiSettings>): Promise<ApiSettings> {
     return this.request('/settings', {
       method: 'PATCH',
       body: JSON.stringify(settings),
     });
   }
 
-  // Ships
+  // Ships & Companies
   public async listCompanies(): Promise<ApiCompany[]> {
     return this.request('/ships/companies');
   }
@@ -165,6 +207,13 @@ class ApiClient {
     });
   }
 
+  public async updateAssignment(assignmentId: string, assignment: ApiAssignmentInput): Promise<ApiAssignment> {
+    return this.request(`/assignments/${assignmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(assignment),
+    });
+  }
+
   public async deleteAssignment(assignmentId: string): Promise<void> {
     return this.request(`/assignments/${assignmentId}`, {
       method: 'DELETE',
@@ -182,6 +231,7 @@ class ApiClient {
   }
 
   public async createQrToken(): Promise<ApiConnectionToken> {
+    // Bodyless POST request
     return this.request('/connections/qr', {
       method: 'POST',
     });
@@ -201,6 +251,7 @@ class ApiClient {
   }
 
   public async blockUser(userId: string): Promise<void> {
+    // Body has { userId }, returns 201 with no body
     return this.request('/blocks', {
       method: 'POST',
       body: JSON.stringify({ userId }),
@@ -213,13 +264,14 @@ class ApiClient {
     return this.request(`/overlaps${query}`);
   }
 
-  public async poke(overlapId: string): Promise<components['schemas']['MeetingIntent']> {
+  public async poke(overlapId: string): Promise<ApiMeetingIntent> {
+    // Bodyless POST request
     return this.request(`/overlaps/${overlapId}/poke`, {
       method: 'POST',
     });
   }
 
-  public async respondToPoke(overlapId: string, status: components['schemas']['MeetingIntentResponse']['status']): Promise<components['schemas']['MeetingIntent']> {
+  public async respondToPoke(overlapId: string, status: ApiMeetingIntentResponse['status']): Promise<ApiMeetingIntent> {
     return this.request(`/overlaps/${overlapId}/intent`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),

@@ -2,23 +2,24 @@ export type ConnectionType = 'nearby-port' | 'same-port' | 'same-ship';
 
 export interface User {
   id: string;
-  email: string;
+  email?: string;
   username: string;
   displayName: string;
   avatarUrl?: string;
   bio?: string;
-  role: 'crew' | 'officer' | 'guest' | 'entertainer' | 'other';
+  role?: 'crew' | 'officer' | 'guest' | 'entertainer' | 'other';
   nearbyRadiusKm: number;
-  lastActiveAt: string; // e.g., "Active 2h ago" or ISO
+  lastActiveAt?: string; // e.g., "Active recently"
+  emailVerified?: boolean;
 }
 
 export interface Contract {
   id: string;
   userId: string;
-  cruiseLine: string;
-  shipName: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  cruiseLine: string; // companyId
+  shipName: string;   // shipId or name
+  startDate: string;  // YYYY-MM-DD
+  endDate: string;    // YYYY-MM-DD
   role?: string;
   status: 'active' | 'upcoming' | 'past';
 }
@@ -45,7 +46,8 @@ export interface OverlapSummary {
   sharedStart: string;
   sharedEnd: string;
   sharedHours: number;
-  pokeStatus?: 'none' | 'sent' | 'interested' | 'not_interested';
+  pokeStatus?: 'none' | 'poked' | 'interested' | 'not_interested';
+  lifecycle?: 'future' | 'current' | 'expired';
 }
 
 export interface OverlapDetail extends OverlapSummary {
@@ -54,8 +56,8 @@ export interface OverlapDetail extends OverlapSummary {
 }
 
 export interface Connection {
-  id: string;
-  mate: User;
+  id: string; // Connection ID (for removal)
+  mate: User; // User Profile (mate.id is userId for blocking)
   connectedAt: string;
   currentPortCity?: string;
   currentShip?: string;
