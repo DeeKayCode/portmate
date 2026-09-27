@@ -1,29 +1,50 @@
-# PortMate – Product Specification
+# PortMate product specification
 
-> [!WARNING]
-> **STATUS: BOOTSTRAP PLACEHOLDER**
-> The formal product specification has not yet been approved for autonomous implementation.
-> Worker agents MUST NOT begin product feature development until this placeholder is replaced with the approved specification.
+**Status:** Human-approved product and architecture baseline, 2026-09-27.
 
-## 1. Product Vision
-**PortMate** is an itinerary tracking and social connectivity mobile platform specifically designed for cruise ship crew members and workers. It enables crew members to track ports of call, discover overlapping schedules with friends across different vessels, and stay connected while at sea and in port.
+## Product
 
-## 2. Core Pillars (Target Scope)
-1. **Profile & Vessel Assignment**: Crew profile, role, current vessel, and historical assignments.
-2. **Itinerary Management**: Personal and vessel cruise itinerary tracking, offline-first port schedule.
-3. **Port Overlap Calculation**: Automated matching to identify when friends or former colleagues are docked in the same port at the same time.
-4. **Social & Communication**: Crew meetups, recommendations for port amenities (Wi-Fi spots, crew discounts, supplies).
-5. **Event-Driven Updates**: Port schedule changes, delay notifications, meetup invites.
+PortMate is a mobile-first web application and PWA that helps people travelling or working aboard cruise ships discover real-world meeting opportunities. A user adds ship assignments; PortMate derives relevant port calls and finds overlaps with PortMate connections.
 
-## 3. Architecture Overview
-- **Mobile Client**:
-  - UI/UX layer owned by `gemini-worker` (Gemini / Antigravity).
-  - Application logic, data store, offline caching, and API client owned by `gpt-worker` (Codex / GPT).
-- **Backend Server**:
-  - Owned by ÓE GenAI on the `server` branch.
-  - Debian LXC containerized deployment with Docker Compose.
-- **Contract-Driven Integration**:
-  - All communication is strictly governed by schemas in `/contracts`.
+PortMate is not a general social network. It has no chat, feed, posts, stories, followers, likes, continuous GPS tracking, crew-status requirement, or WhatsApp authentication.
 
----
-*Specification revision: bootstrap-v1.0 (Awaiting final product contract approval)*
+## Architecture
+
+- `mobile/`: Gemini-owned responsive PWA frontend.
+- `server/`: GPT-owned TypeScript/Fastify application, PostgreSQL persistence, background processing and API.
+- PostgreSQL is the only required data service. Docker Compose runs the application and database as one deployable PortMate system.
+- `contracts/openapi.yaml` is the canonical HTTP/API contract beneath current explicit human-approved requirements. API model JSON Schema and shared TypeScript types are generated from it. GPT owns compatible backend-side contract changes; Gemini consumes them.
+- A production cruise-data provider is optional configuration. The application must use a provider abstraction and deterministic development data without prohibited scraping.
+
+## Core domain
+
+Accounts use verified email/password or Google authentication. Usernames are mandatory; profile picture and other profile details are optional. Last activity is privacy-conscious and coarsely represented.
+
+Users may have current and future ship assignments containing company, ship, start date and end date. Assignment creation metadata supports analysis of how far ahead future assignments were entered.
+
+A connection is created immediately through a deliberate QR scan or a shareable, scoped link. Users can remove connections or block users; all connection and block checks are server-enforced.
+
+Itineraries come from assignment intervals and cached provider port calls. Current relevant location is itinerary-derived at port/city level.
+
+An overlap has positive temporal intersection when `max(start) < min(end)`. Same-port overlaps need any positive intersection. Nearby-port overlaps also require distance within the user's configurable threshold (default 50 km). Same-ship assignment overlaps are a stronger state and suppress redundant ordinary meeting opportunities.
+
+Persistent overlap state records participants, ports, coordinates, interval, lifecycle, intent and notification delivery state. Pokes are allowed only for future overlaps. A recipient can record Interested or Not Interested; the latter stops meeting reminders.
+
+Email is the MVP outbound transport. In-app notification state is persisted. Overlap reminders are idempotent, retry-safe, duplicate-resistant and stop on expiry or Not Interested.
+
+## Security and delivery
+
+Use secure password hashing, verified email, safe sessions/tokens, authorization and ownership checks, rate limiting where appropriate, input validation, CSRF protection where applicable, secure QR/share tokens, secret-safe logging and dependency scanning. Never commit credentials.
+
+The repository must ultimately support:
+
+```sh
+cp .env.example .env
+docker compose up -d --build
+```
+
+Production hosting, DNS, TLS, cloud accounts and production secrets are outside repository automation.
+
+## Completion
+
+`[CLIENT_COMPLETE] PortMate release gate passed` is allowed only after the complete PWA/backend system, real contracts, tests, Docker validation and documentation pass the final system audit.

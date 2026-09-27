@@ -1,124 +1,56 @@
-# PortMate Automation Infrastructure & Runbook
+# PortMate automation
 
-This directory contains the operational tooling, scripts, runtime state guards, and documentation for the multi-agent autonomous development workflow.
+Automation supports the approved PortMate PWA and backend baseline. Both workers use `client`: Gemini owns `mobile/`; GPT owns `server/`, compatible contracts and final integration. `main` remains reserved for human release review.
 
----
+## Emergency stop
 
-## 🛑 1. Emergency Stop / Kill Switch
+In GitHub → Actions → each of **Trigger GPT** and **Trigger Gemini** → … → Disable workflow. Cancel already queued/running jobs as well. Set repository variable `PORTMATE_AUTOMATION_ENABLED` to `false` to prevent new worker jobs. To stop the workstation, open Services and stop its **GitHub Actions Runner** service, or run `Stop-Service -Name <exact-name-from-runner-.service>` in an administrator PowerShell. Stop any surviving agent process after checking its PID; stopping a listener alone is not proof that its child has stopped. Disable both workstations for a complete stop.
 
-If the autonomous agent loop must be halted immediately, use either of the following methods:
+## One-time workstation setup
 
-### Method A: Disable GitHub Actions Workflows (Recommended)
-1. Navigate to the GitHub repository:
-   `https://github.com/DeeKayCode/portmate/actions`
-2. Select **Trigger Gemini Worker** → click `...` → **Disable workflow**.
-3. Select **Trigger GPT Worker** → click `...` → **Disable workflow**.
-This immediately ceases any new runner dispatches on push events.
+1. Use a dedicated Windows x64 worker account and checkout. Install Git and PowerShell 7 on its PATH. Authenticate Git with access only to DeeKayCode/portmate using Git Credential Manager or a repository-scoped credential. Do not put credentials in remote URLs, files in this repository, or logs.
+2. GPT: install Codex and run `codex login` as the service account. The wrapper uses the custom `portmate-worker` permission profile in `gpt-permissions.ps1`. It permits repository and Git metadata writes, keeps `.codex`/`.agents` read-only, permits temporary build files and network access for dependency/test tools, and places npm cache inside ignored `node_modules`. Other host directories remain read-only. Do not add `--sandbox workspace-write`, which overrides the custom profile and makes Git metadata read-only. Run `test-gpt-permissions.ps1 -RepositoryPath <checkout>` before enabling automation; it also runs before each GPT invocation without consuming model tokens.
+3. Gemini: inspect the installed Antigravity/Gemini CLI `--help` on Dönci's machine. Create a local PowerShell adapter outside the repository accepting `-Prompt`, `-RepositoryPath` and `-ValidateOnly`. It must invoke the discovered headless command, validate installed CLI/authentication in validation mode, and return a nonzero exit on failure. Set `PORTMATE_GEMINI_ADAPTER` for the runner account. No flags were guessed on the GPT workstation.
+4. Open [New self-hosted runner](https://github.com/DeeKayCode/portmate/settings/actions/runners/new), select Windows/x64, and use the current GitHub download/checksum/registration commands in a dedicated directory outside the repository, such as `C:\Users\Adam.DESKTOP-9CMLFIG\actions-runner-portmate`. Add custom label `gpt-worker` or `gemini-worker`. Registration tokens expire and must stay out of chat/Git/logs. Configure the Windows service using administrator PowerShell, under the account with the CLI login and Git credential. Restart after environment changes.
+5. Clone this repository into a dedicated worker checkout and switch to `client`. Set `PORTMATE_RUNNER_DIRECTORY` to the runner directory. Set repository Actions variables `GPT_REPOSITORY_PATH` and `GEMINI_REPOSITORY_PATH` to their absolute checkout paths. Each checkout must contain the reviewed bootstrap scripts. Workflows call those scripts without destructive checkout/cleanup.
+6. Configure repository-local Git identity on each checkout. Run `pwsh -NoProfile -File automation/scripts/validate-worker-environment.ps1 -Role gpt` (or gemini). Both validations must pass. Confirm both runners are online with their required labels in GitHub.
+7. Keep `PORTMATE_AUTOMATION_ENABLED` unset/false until the handshake is approved. Keep runner labels repository-specific in runner access policy. Trigger workflows only run on client pushes, never pull requests.
 
-### Method B: Stop Local Self-Hosted Runner
-On the runner workstation:
-- **If running as Windows Service**:
-  Open an administrative terminal and run:
-  ```powershell
-  Stop-Service actions.runner.*
-  ```
-- **If running in interactive terminal**:
-  Press `Ctrl + C` in the runner terminal window.
+Worker pushes deliberately use the account's Git credential, not `GITHUB_TOKEN`: GitHub suppresses new push workflow runs created by that token. Use a GitHub App installation credential or appropriately scoped personal credential if needed; never weaken branch/security settings. See [GitHub trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
----
+On Windows, an old workspace sandbox can leave deny ACEs on `.git` after changing profiles. A failed permission probe stops before the model runs. An authorized administrator must inspect and back up the ACL and reconcile only the obsolete sandbox deny entries on the dedicated checkout; never reset ACLs globally. Adam's checkout was repaired with this scoped procedure and verified with a sandboxed Git add/commit plus a denied sibling-directory write. The profile follows [OpenAI permission profiles](https://learn.chatgpt.com/docs/permissions).
 
-## 🔄 2. Architecture & The Ping-Pong Loop
+After explicit maintenance interrupts a pending handoff, invoke `invoke-gpt-worker.ps1 -TriggerSha <original-Gemini-sha> -RepositoryPath <checkout> -ResumeAfterMaintenance`. This requires the original handoff to remain an ancestor and every intervening commit to be `chore:`; any newer product handoff rejects the resume. The outgoing commit must be one child of current origin/client and retain the original trigger trailer. Ordinary workflow invocations still reject stale triggers.
 
-```text
-       Gemini Worker (Dönci)                   GPT Worker (Adam)
-    [Self-hosted: gemini-worker]           [Self-hosted: gpt-worker]
-                 │                                     │
-                 ▼                                     │
-         git push [GEMINI] ...                         │
-                 │                                     │
-                 ▼                                     ▼
-         trigger-gpt.yml  ────────────────►   Wakes & Implements
-                                              Data Layer / Logic
-                                                       │
-                                                       ▼
-                 ▲                            git push [GPT] ...
-                 │                                     │
-         Wakes & Implements   ◄────────────────  trigger-gemini.yml
-         UI / Components
-                 │
-                 ▼
-         (Repeats until completion)
-```
+## First handshake: explicit human approval required
 
-- **Branch**: Both agents work on `client`.
-- **Contracts**: Neither agent may touch `/contracts`.
-- **Stop Conditions**:
-  - `[CLIENT_COMPLETE]`: Signals all requirements and gates have passed; triggers neither worker.
-  - Non-triggering commits (`chore: ...`): Processed without re-triggering the loop.
+Only after both runners validate and are online, request human confirmation immediately before initiation. Set `PORTMATE_AUTOMATION_ENABLED=true`. On Gemini's clean client checkout, fast-forward from origin/client. Change only `automation/handshake/state.json` from START to GEMINI_OK, commit `[GEMINI] automation handshake`, and push client. GPT deterministically changes it to GPT_OK and commits `[GPT] automation handshake`; Gemini changes it to COMPLETE and commits `chore: automation handshake complete`. That final commit triggers neither worker. No model or application code is needed. Inspect both Actions runs, commit ancestry and COMPLETE. Disable the variable again after this test pending product authorization. Re-running an old event is rejected as stale, not replayed.
 
----
+## Implementation and release gates
 
-## 🛠️ 3. Failure Recovery Procedures
+The approved baseline uses `automation/gates/` for contract, backend and mobile checks. API authority is current explicit human-approved requirements, then `contracts/openapi.yaml`, then generated schemas/types, then implementation. `npm --prefix server run generate:contracts` derives the shared types, model schema and backend response validators. The contract gate rejects stale output and type-checks both consumers. The backend and client gates run audit, type checking, linting, tests and builds. CI additionally runs real PostgreSQL integration and the complete Docker Compose smoke test. `[CLIENT_COMPLETE]` requires all release gates and passing CI, plus the functional release audit.
 
-> [!WARNING]
-> **NEVER force-push (`git push --force`) or hard-reset (`git reset --hard`) on shared branches.**
+After checkout synchronization, `sync-dependencies.ps1` runs deterministic `npm ci` for both packages when the manifest, lockfile, Node/npm version or platform changes. A stamp inside ignored `node_modules` and a successful `npm ls` permit reuse. Failed installs never create a successful stamp. Standalone release gates also synchronize dependencies. Initial dependency/contract failure is passed to the agent as `TECHNICAL_REPAIR_REQUIRED`; publication still requires successful final gates.
 
-### Scenario A: Dirty Working Tree / Stuck Lock
-If a worker script crashed or terminated prematurely:
-1. Check `automation/state/gemini.lock` or `automation/state/gpt.lock`.
-2. Delete the stale lock file once verified that no process is running:
-   ```powershell
-   Remove-Item ./automation/state/*.lock -Force
-   ```
-3. Inspect `git status`. Either commit genuine progress or clean untracked test debris.
+Routine technical drift is repaired autonomously against the authority hierarchy. For genuinely contradictory human product requirements, use `report-human-decision.ps1` with the trigger SHA, conflicting requirements, affected components and smallest required decision. The wrapper prints `HUMAN_DECISION_REQUIRED`, preserves the Git-metadata record and exits 78 before publication. Resolve that record only after the specific human decision arrives. Technical failures use ordinary nonzero failure status and must not be mislabeled as product decisions.
 
-### Scenario B: Offline Worker PC
-If one workstation is offline when a handoff commit is pushed:
-- GitHub Actions queues the job on the designated runner label.
-- When the offline workstation comes back online and starts its runner, it will automatically consume the queued handoff job in chronological order.
+## Execution safeguards and recovery
 
-### Scenario C: Rejected Push (Concurrent Update)
-The workflow uses `concurrency: cancel-in-progress: false` to sequence runs. However, if a push is rejected:
-1. Run `git fetch origin client`.
-2. Inspect differences: `git log HEAD..origin/client --oneline`.
-3. If fast-forwardable: `git merge --ff-only origin/client`.
-4. If merge conflict exists, see Scenario D.
+Both wrappers require a clean client checkout, correct origin, full event SHA at origin/client HEAD, fast-forward ancestry, expected incoming marker and one outgoing commit with a trigger trailer. They share an OS file lock, enforce role-specific paths, inspect commits for obvious secrets, and use normal pushes. This lightweight scan is not a complete secret scanner. Ancestry, event SHA and committed handshake state define progress; Git-metadata checkpoints only attest exact recoverable agent work. Never force-reset, force-push or automatically stash human changes.
 
-### Scenario D: Merge Conflict
-If conflicting changes occurred:
-1. Human or developer must review the conflict:
-   ```powershell
-   git status
-   git diff
-   ```
-2. Resolve conflicts manually, adhering strictly to `/contracts`.
-3. Commit with a standard message:
-   ```text
-   chore: resolve merge conflict between agent commits
-   ```
-4. Push to `origin/client`.
+- Agent failure: disable triggers, inspect preserved diff and logs; repair deliberately. No push occurs after a failed invocation.
+- Offline PC: restore the service and review queued jobs. Stale jobs fail rather than processing an obsolete handoff. Resume from the latest valid event.
+- Rejected push / remote advanced: preserve local commit, integrate manually, rerun tests, then push an expected marker only after review.
+- Dirty checkout: recover only an exact agent-attested checkpoint for the active role and trigger. The checkpoint fingerprints HEAD, staging, tracked changes and all untracked file contents. Changed or unknown files stop recovery and are preserved. No automatic stash, reset, deletion or blind commit is permitted. See `AGENTS.md` for the checkpoint command.
+- Merge conflict: stop; resolve manually and rerun gates. No automatic rebase or history rewrite.
+- CI failure: inspect failed gate, fix its cause and revalidate; a completion marker is not a release.
+- Timeout: Actions cancels after 45 minutes; check and stop surviving child processes before restarting. OS handles release the lock when the wrapper exits; never bypass a live lock. Review any leftover changes/commit before retry.
+- Duplicate event: if origin advanced, the stale-SHA check rejects it. An unpublished handoff can resume through a matching checkpoint, then passes the same marker, ancestry, ownership, secret and validation gates before pushing.
 
-### Scenario E: CI Failure
-If CI fails on `client`:
-- Inspect the CI logs on GitHub Actions.
-- Determine whether the failure originated in the UI layer (Gemini) or data layer (GPT).
-- The responsible agent repairs the defect in the next handoff increment.
+Every handoff must include all intentional changes. The wrapper checks the complete worktree after the agent, after validation, immediately before push and after push. Validation-created changes block publication. A checkpoint is an explicit ownership attestation, not proof inferred from filenames, author names or a dirty checkout; interruption before an attested checkpoint still requires review. Ignored build output and external processes that ignore the worker lock are outside the tracked/untracked cleanliness guarantee. Checkpoints live in Git metadata and are cleared after successful publication.
 
----
+## Current bootstrap status
 
-## 🧪 4. Bootstrap Handshake Ping-Pong Test
+For explicit human-requested maintenance outside normal worker ownership, `publish-reviewed-maintenance.ps1 -ExpectedRemoteSha <sha>` validates all gates, clean state, ancestry, secrets and unchanged remote before a normal push. It permits only non-triggering `chore:` commits. After maintenance, `-AuditTriggerSha <incorporated-Gemini-sha>` can dispatch exactly one documentation-only `[GPT]` repair handoff, provided no newer worker turn superseded the audited handoff. It cannot publish a completion marker or arbitrary product changes. Normal workers retain their existing stricter single-child protocol.
 
-To verify cross-machine automation before product feature development:
-1. Ensure both runners (`gemini-worker` and `gpt-worker`) are online in GitHub:
-   `https://github.com/DeeKayCode/portmate/settings/actions/runners`
-2. Run the environment validator:
-   ```powershell
-   pwsh -File ./automation/scripts/validate-worker-environment.ps1 -Role gemini-worker
-   ```
-3. On confirmation, Gemini initiates the handshake:
-   - Sets `phase: "GEMINI_OK"` in `automation/handshake/state.json`.
-   - Commits: `[GEMINI] automation handshake: phase GEMINI_OK`.
-   - Pushes to `client`.
-4. GitHub wakes GPT runner → GPT updates to `phase: "GPT_OK"` → commits `[GPT] automation handshake: phase GPT_OK`.
-5. GitHub wakes Gemini runner → Gemini updates to `phase: "COMPLETE"` → commits `chore: automation handshake complete`.
-6. Loop stops cleanly.
+The GPT runner, Actions configuration and the cross-machine handshake have been validated. The handshake state is `COMPLETE`. The next step is Gemini's first real `[GEMINI]` frontend handoff; GPT then performs its backend and final-integration work under `SPEC.md` and `/contracts`.

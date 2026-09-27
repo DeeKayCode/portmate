@@ -1,13 +1,522 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PortMateModelsPlaceholder",
-  "description": "BOOTSTRAP_PLACEHOLDER: Pending formal domain models approval. Agents must not fabricate domain models.",
-  "type": "object",
-  "properties": {
-    "bootstrap": {
-      "type": "boolean",
-      "const": true
+  "$id": "https://portmate.example/contracts/models.schema.json",
+  "$comment": "Generated from openapi.yaml. Run npm --prefix server run generate:contracts.",
+  "$defs": {
+    "Health": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "const": "ok"
+        },
+        "database": {
+          "enum": [
+            "unknown",
+            "healthy",
+            "unhealthy"
+          ]
+        }
+      }
+    },
+    "Problem": {
+      "type": "object",
+      "required": [
+        "type",
+        "title",
+        "status"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "format": "uri-reference"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "RegisterRequest": {
+      "type": "object",
+      "required": [
+        "email",
+        "password",
+        "username"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "password": {
+          "type": "string",
+          "minLength": 12
+        },
+        "username": {
+          "$ref": "#/$defs/Username"
+        }
+      }
+    },
+    "LoginRequest": {
+      "type": "object",
+      "required": [
+        "email",
+        "password"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "password": {
+          "type": "string"
+        }
+      }
+    },
+    "GoogleAuthRequest": {
+      "type": "object",
+      "required": [
+        "idToken"
+      ],
+      "properties": {
+        "idToken": {
+          "type": "string"
+        }
+      }
+    },
+    "TokenRequest": {
+      "type": "object",
+      "required": [
+        "token"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 20
+        }
+      }
+    },
+    "VerificationPending": {
+      "type": "object",
+      "required": [
+        "verificationRequired"
+      ],
+      "properties": {
+        "verificationRequired": {
+          "const": true
+        }
+      }
+    },
+    "Session": {
+      "type": "object",
+      "required": [
+        "accessToken",
+        "user"
+      ],
+      "properties": {
+        "accessToken": {
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/$defs/Profile"
+        }
+      }
+    },
+    "Username": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 32,
+      "pattern": "^[A-Za-z0-9_]+$"
+    },
+    "Profile": {
+      "type": "object",
+      "required": [
+        "id",
+        "username",
+        "emailVerified"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "username": {
+          "$ref": "#/$defs/Username"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "avatarUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "emailVerified": {
+          "type": "boolean"
+        },
+        "lastActiveLabel": {
+          "enum": [
+            "recently",
+            "hours_ago",
+            "yesterday",
+            "older"
+          ]
+        }
+      }
+    },
+    "ProfileUpdate": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "$ref": "#/$defs/Username"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "avatarUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "Settings": {
+      "type": "object",
+      "required": [
+        "nearbyPortThresholdKm"
+      ],
+      "properties": {
+        "nearbyPortThresholdKm": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 50
+        },
+        "emailNotifications": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "CruiseCompany": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "Ship": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "company"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "company": {
+          "$ref": "#/$defs/CruiseCompany"
+        }
+      }
+    },
+    "AssignmentInput": {
+      "type": "object",
+      "required": [
+        "companyId",
+        "shipId",
+        "startDate",
+        "endDate"
+      ],
+      "properties": {
+        "companyId": {
+          "type": "string"
+        },
+        "shipId": {
+          "type": "string"
+        },
+        "startDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "Assignment": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/AssignmentInput"
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "createdAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "PortCall": {
+      "type": "object",
+      "required": [
+        "portId",
+        "portName",
+        "arrivalAt",
+        "departureAt",
+        "latitude",
+        "longitude"
+      ],
+      "properties": {
+        "portId": {
+          "type": "string"
+        },
+        "portName": {
+          "type": "string"
+        },
+        "countryCode": {
+          "type": "string"
+        },
+        "arrivalAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "departureAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "latitude": {
+          "type": "number"
+        },
+        "longitude": {
+          "type": "number"
+        }
+      }
+    },
+    "Itinerary": {
+      "type": "object",
+      "required": [
+        "assignmentId",
+        "portCalls"
+      ],
+      "properties": {
+        "assignmentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "portCalls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortCall"
+          }
+        },
+        "sourceUpdatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Connection": {
+      "type": "object",
+      "required": [
+        "id",
+        "profile",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "profile": {
+          "$ref": "#/$defs/Profile"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ConnectionToken": {
+      "type": "object",
+      "required": [
+        "token",
+        "expiresAt"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "BlockInput": {
+      "type": "object",
+      "required": [
+        "userId"
+      ],
+      "properties": {
+        "userId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "Overlap": {
+      "type": "object",
+      "required": [
+        "id",
+        "connection",
+        "type",
+        "lifecycle",
+        "startsAt",
+        "endsAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "connection": {
+          "$ref": "#/$defs/Profile"
+        },
+        "type": {
+          "enum": [
+            "same_port",
+            "nearby_port",
+            "same_ship"
+          ]
+        },
+        "lifecycle": {
+          "enum": [
+            "future",
+            "current",
+            "expired"
+          ]
+        },
+        "startsAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "endsAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "portCalls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortCall"
+          }
+        },
+        "distanceKm": {
+          "type": "number"
+        },
+        "meetingIntent": {
+          "$ref": "#/$defs/MeetingIntent"
+        }
+      }
+    },
+    "MeetingIntent": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "none",
+            "poked",
+            "interested",
+            "not_interested"
+          ]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "MeetingIntentResponse": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "interested",
+            "not_interested"
+          ]
+        }
+      }
+    },
+    "Notification": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "createdAt",
+        "read"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "type": {
+          "enum": [
+            "overlap_upcoming",
+            "poke_received",
+            "poke_response"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "overlapId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
     }
-  },
-  "required": ["bootstrap"]
+  }
 }

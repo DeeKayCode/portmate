@@ -1,13 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PortMateEventsPlaceholder",
-  "description": "BOOTSTRAP_PLACEHOLDER: Pending formal event payloads approval. Agents must not fabricate event payloads.",
+  "$id": "https://portmate.example/contracts/events.schema.json",
+  "title": "PortMate application event v1",
   "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "occurredAt", "recipientUserId", "payload"],
   "properties": {
-    "bootstrap": {
-      "type": "boolean",
-      "const": true
-    }
-  },
-  "required": ["bootstrap"]
+    "id": { "type": "string", "format": "uuid" },
+    "type": { "enum": ["overlap.upcoming", "poke.created", "poke.responded"] },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "recipientUserId": { "type": "string", "format": "uuid" },
+    "payload": { "type": "object", "required": ["overlapId"], "properties": { "overlapId": { "type": "string", "format": "uuid" }, "intent": { "enum": ["interested", "not_interested"] } }, "additionalProperties": false }
+  }
 }

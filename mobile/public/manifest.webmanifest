@@ -1,0 +1,18 @@
+{
+  "name": "PortMate",
+  "short_name": "PortMate",
+  "description": "Discover when and where your paths cross with friends in cruise ports.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0F4C81",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

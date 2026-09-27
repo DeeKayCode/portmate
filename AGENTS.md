@@ -1,85 +1,37 @@
-# PortMate – Multi-Agent Collaboration Governance
+# PortMate collaboration governance
 
-This document establishes the ground rules, boundaries, and communication protocol for all autonomous and semi-autonomous AI agents operating within `DeeKayCode/portmate`.
+## Source of truth
 
----
+For API behavior/models the authority order is: explicit current human-approved product requirements, `contracts/openapi.yaml`, generated schemas/types, implementation. `SPEC.md` records product requirements; `DesignSpec.md` is Gemini-owned UI guidance subordinate to them. OpenAPI is the sole canonical HTTP contract. Repair stale generated artifacts and implementation drift autonomously; they are not human decisions.
 
-## 1. Source of Truth Hierarchy
+Only contradictory authoritative human product requirements require `HUMAN_DECISION_REQUIRED`: identify the conflicting requirements, affected files and smallest needed decision; preserve all work. Use `automation/scripts/report-human-decision.ps1` with the active trigger for distinguishable workflow output. Technical failures (dependencies, generation, lint, build, tests) must be diagnosed and repaired.
 
-When resolving requirements, architectural decisions, or discrepancies, agents must follow this strict priority order:
+## Ownership
 
-1. **`/contracts`** – Frozen, versioned schemas and API specifications. (Highest priority)
-2. **`SPEC.md`** – Approved product and architectural specification.
-3. **`AGENTS.md`** – This governance and ownership guideline.
-4. **Existing implementation** – Current repository code on the relevant branch.
+- **Gemini** owns the complete frontend PWA: UI/UX, frontend architecture, client state/data, navigation, forms, caching, maps and frontend tests.
+- **GPT** owns the complete backend and final system integration: API, PostgreSQL, migrations, backend/domain logic, authentication, authorization, provider abstraction, notifications, Docker readiness, backend/integration tests and release audit.
+- There is no active server-worker/ÓE agent.
 
-> [!CAUTION]
-> If any conflict or ambiguity is detected between these sources, the agent **MUST STOP and report the conflict**. Never guess, invent schemas, or create proprietary protocol extensions.
+Both active workers use `client`. `main` remains human-reviewed stable integration; `server` is retained only as a historical branch and is not an active workstream.
 
----
+## Contracts
 
-## 2. Worker Ownership Boundaries
+`/contracts` is the shared API boundary. Gemini consumes canonical OpenAPI and may regenerate derived artifacts, but must not change OpenAPI. GPT may make compatible contract changes for the active handoff and records them in `contracts/CHANGELOG.md`. Run `npm --prefix server run generate:contracts`; never manually maintain competing API schemas. Breaking product changes require human approval.
 
-### Gemini (`gemini-worker`)
-- **Domain**: Mobile frontend, user interface (UI), and user experience (UX).
-- **Branch**: `client`
-- **Workstation**: Dönci's Windows workstation.
-- **Trigger**: Pushes to `client` with commit prefix `[GPT]`.
-- **Handoff marker**: `[GEMINI] <description>` or `[GEMINI_COMPLETE] Frontend implementation complete`.
-- **Responsibilities**:
-  - Implement and refine views, components, navigation flows, and styling.
-  - Bind to state and data interfaces provided by `gpt-worker`.
-  - Maintain UI/component tests.
-  - Never modify `/contracts` or implement server code.
+## Prohibitions
 
-### GPT (`gpt-worker`)
-- **Domain**: Mobile application logic, data layer, state management, and client-side persistence.
-- **Branch**: `client`
-- **Workstation**: Adam's Windows workstation.
-- **Trigger**: Pushes to `client` with commit prefix `[GEMINI]` or `[GEMINI_COMPLETE]`.
-- **Handoff marker**: `[GPT] <description>` or `[CLIENT_COMPLETE] Client release gate passed`.
-- **Responsibilities**:
-  - Implement application state, API clients, authentication token handling, and local storage.
-  - Implement client-side business logic, synchronization, and event handlers.
-  - Maintain data layer and integration unit tests.
-  - Conduct full audit and release validation upon receiving `[GEMINI_COMPLETE]`.
-  - Never redesign Gemini's UI unless fixing a functional integration defect.
-  - Never modify `/contracts` or implement server code.
+No worker may commit secrets, force-push, rewrite published history, merge to `main`, disable security checks, deploy externally, access production accounts, or implement prohibited social/GPS features. Do not bypass system security controls.
 
-### ÓE GenAI (`server-worker`)
-- **Domain**: Server-side implementation, persistence, and external service adapters.
-- **Branch**: `server`
-- **Deployment**: Debian-based LXC with Docker Compose.
-- **Responsibilities**:
-  - Implement REST/WebSocket APIs conforming exactly to `/contracts`.
-  - Database schema, migrations, background workers, and scheduling.
-  - Authentication verification, health checks, and logging.
-  - Maintain server-side automated test suites.
-  - Never modify `/contracts` without explicit human sign-off.
+## Workflow
 
----
+The triggering commit SHA and marker decide turns: `[GEMINI]` invokes GPT; `[GPT]` invokes Gemini; `[GEMINI_COMPLETE]` invokes GPT's final audit; `[CLIENT_COMPLETE]` stops both. Bootstrap and maintenance commits never use worker markers.
 
-## 3. Strict Prohibitions (Forbidden Without Explicit Human Approval)
+On a normal handoff, work only on the required dependency chain. GPT may edit `server/`, `/contracts`, backend documentation and Docker/release configuration; Gemini may edit `mobile/` and `DesignSpec.md`. Each worker tests, repairs its own failures and creates one coherent handoff commit with `PortMate-Trigger: <trigger-sha>`. The wrapper pushes it.
 
-No agent may autonomously:
-1. **Modify `/contracts`** under any circumstance.
-2. **Alter the fundamental architecture** or branch model.
-3. **Introduce paid third-party infrastructure** or external paid SaaS dependencies.
-4. **Commit secrets**, API tokens, private keys, passwords, or credentials.
-5. **Disable or bypass security checks**, linters, or test gates.
-6. **Delete or corrupt existing user data** or database tables without verified migration scripts.
-7. **Force-push** (`git push --force` or `--force-with-lease`) to shared branches (`main`, `client`, `server`).
-8. **Rewrite Git history** (rebase or reset published commits).
-9. **Merge into `main`** (merges to `main` are reserved for human release review).
+Explicit human-requested maintenance may reconcile governance, generation and automation outside normal worker path ownership. Commit that maintenance with a non-triggering `chore:` subject. Keep any subsequent product repair handoff distinct, with the audit findings and remaining work. Normal automated workers still obey the single-child and role-specific path checks.
 
----
+## Mandatory clean handoff and recovery
 
-## 4. Engineering Quality Standards
+Inspect staged, unstaged and all untracked files. Review and stage every intentional change from this run, validate, create the handoff, and verify `git status --porcelain --untracked-files=all` is empty. A marker alone does not complete a handoff. Never push directly; the wrapper checks cleanliness again after validation and immediately before pushing.
 
-Every agent must:
-- **Inspect existing code first** before proposing or writing modifications.
-- **Implement functioning code** rather than returning instructions or descriptions.
-- **Test all modifications** locally using relevant test runners before committing.
-- **Repair any regression or build failure** introduced by its modifications.
-- **Produce coherent, atomic commits** with standard prefix tags.
-- **Preserve buildability**: Always leave the repository in a clean, buildable state.
+After inspecting and attributing all pending changes to this run, save an explicit recovery checkpoint with `automation/scripts/checkpoint-agent-work.ps1 -Role <role> -TriggerSha <sha> -ConfirmAgentOwned`. Refresh it after intentional edits and after committing. This records a fingerprint in Git metadata, not application files. Never attest unknown changes. An interrupted run may resume only when the event, HEAD, index, tracked diffs and untracked file contents exactly match that checkpoint. Reinspect and validate recovered work; keep one handoff commit, amending only an unpublished commit belonging to this same run when necessary. Unknown changes or changes since the checkpoint are preserved and stop automatic recovery. Do not delete, reset, overwrite, stash or blindly commit them.

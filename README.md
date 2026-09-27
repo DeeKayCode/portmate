@@ -1,86 +1,46 @@
 # PortMate
 
-Itinerary tracking and social connectivity mobile platform designed for cruise ship crew members and maritime workers.
+PortMate is a mobile-first PWA that helps cruise travellers and workers discover when their ship itineraries overlap with people they know.
 
----
+## Architecture
 
-## 🚢 Overview
+- `mobile/`: Gemini-owned PWA frontend.
+- `server/`: GPT-owned TypeScript/Fastify backend.
+- PostgreSQL: persistent application state.
+- `contracts/`: versioned frontend/backend boundary.
 
-PortMate enables cruise crew members to track their port itineraries, discover when friends on other vessels share port stops, and connect in real time during port calls.
+PortMate supports verified email/password and Google authentication, profiles, ship assignments, itinerary-derived locations, secure QR/share connections, blocks, persistent overlaps, future-overlap meeting intent and email/in-app notifications. It does not include chat, feeds, posts, followers or continuous GPS tracking.
 
-The development of PortMate is organized around an **autonomous multi-agent ping-pong workflow**:
-- **Mobile Frontend (UI/UX)**: Built autonomously by **Gemini / Antigravity** (`gemini-worker`).
-- **Mobile Application/Data Layer**: Built autonomously by **Codex / GPT** (`gpt-worker`).
-- **Server Implementation**: Built on a dedicated branch by **ÓE GenAI** (`server-worker`).
+## Development workflow
 
----
+Gemini owns frontend work; GPT owns backend and system integration. Both use the `client` branch and exchange explicit `[GEMINI]` / `[GPT]` handoffs. See [AGENTS.md](AGENTS.md), [SPEC.md](SPEC.md), [DesignSpec.md](DesignSpec.md), [contracts](contracts/README.md) and [automation](automation/README.md).
 
-## 🌿 Branching Model
+## Local backend
 
-| Branch | Purpose | Owners |
-|---|---|---|
-| `main` | Stable integration and release baseline | Human-reviewed releases only |
-| `client` | Shared mobile client development (ping-pong loop) | `gemini-worker` + `gpt-worker` |
-| `server` | Independent backend server implementation | `server-worker` (ÓE GenAI) |
+Requires Node.js 22+.
 
-*Note: All components communicate exclusively via versioned contracts defined in `/contracts`.*
-
----
-
-## 🤖 Commit Protocol & Automation Loop
-
-Client development proceeds via event-driven GitHub Actions workflows reacting to explicit commit markers:
-
-- `[GEMINI] <description>`: Handoff commit from Gemini; triggers GPT worker to implement data/app layer.
-- `[GPT] <description>`: Handoff commit from GPT; triggers Gemini worker to advance frontend implementation.
-- `[GEMINI_COMPLETE] Frontend implementation complete`: Signals frontend completion; triggers comprehensive GPT release audit.
-- `[CLIENT_COMPLETE] Client release gate passed`: Terminal commit when the mobile client passes all tests and Definition of Done.
-
-Bot maintenance and bootstrap commits (e.g. `chore: ...`) do not trigger the ping-pong loop.
-
----
-
-## 📁 Repository Structure
-
-```text
-portmate/
-├── SPEC.md                           # Product & feature specification
-├── AGENTS.md                         # Multi-agent governance and ownership boundaries
-├── README.md                         # Project overview and developer guide
-├── contracts/                        # Frozen API & schema contracts (single source of truth)
-│   ├── README.md
-│   ├── openapi.yaml
-│   ├── models.schema.json
-│   └── events.schema.json
-├── prompts/                          # Worker role instructions
-│   ├── gemini-worker.md
-│   ├── gpt-worker.md
-│   └── server-worker.md
-├── mobile/                           # Mobile client codebase
-├── server/                           # Server codebase
-├── automation/                       # Runner scripts, locks, and handshake tests
-│   ├── README.md
-│   ├── scripts/
-│   │   ├── invoke-gemini-worker.ps1
-│   │   ├── invoke-gpt-worker.ps1
-│   │   └── validate-worker-environment.ps1
-│   ├── handshake/
-│   └── state/
-└── .github/
-    └── workflows/
-        ├── trigger-gemini.yml
-        ├── trigger-gpt.yml
-        └── ci.yml
+```sh
+npm --prefix server ci
+npm --prefix mobile ci
+npm --prefix server run validate:contracts
+npm --prefix server test
+npm --prefix server run dev
 ```
 
----
+Set `DATABASE_URL` and `JWT_SECRET` first. The server applies the idempotent SQL migration at startup. The deterministic cruise provider supplies development/test itinerary data; no external cruise account is required.
 
-## 🛠️ Workstation Setup & Verification
+The frontend uses the API but still needs authentication, connection-link and session-isolation repairs. See `docs/release-audit.md`; the system has not passed the final release audit.
 
-To validate your local worker environment, run:
+## Docker baseline
 
-```powershell
-pwsh -File ./automation/scripts/validate-worker-environment.ps1 -Role gemini-worker
-# or for GPT:
-pwsh -File ./automation/scripts/validate-worker-environment.ps1 -Role gpt-worker
+```sh
+cp .env.example .env
+# Set unique POSTGRES_PASSWORD and JWT_SECRET values.
+docker compose up -d --build
 ```
+
+Open `http://localhost:3000`. The web container serves the PWA and proxies `/api/` to the backend. Check backend health at `/api/v1/health`.
+
+Optional integrations use `GOOGLE_CLIENT_ID` and `SMTP_URL`. Email/password registration requires SMTP and returns 503 before creating an account when SMTP is absent. Without SMTP, in-app notifications remain persistent but outbound email is not sent. Tests use a test-only verification header. Production cruise data requires a separately licensed provider adapter; the repository does not scrape third-party sites.
+
+Stop or restart with `docker compose down` and `docker compose restart`. Update with `git pull && docker compose up -d --build`. Back up with `docker compose exec -T db pg_dump -U portmate portmate > portmate.sql`; restore into an empty database with `docker compose exec -T db psql -U portmate portmate < portmate.sql`. Keep `.env` and backups outside version control.

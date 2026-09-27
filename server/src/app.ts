@@ -1,0 +1,210 @@
+import { randomUUID } from "node:crypto";
+import Fastify, { type FastifyRequest } from "fastify";
+import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import jwt from "@fastify/jwt";
+import rateLimit from "@fastify/rate-limit";
+import sensible from "@fastify/sensible";
+import bcrypt from "bcryptjs";
+import { OAuth2Client } from "google-auth-library";
+import nodemailer from "nodemailer";
+import { z, ZodError } from "zod";
+import type { AppConfig } from "./config.js";
+import { transaction, type Database } from "./db.js";
+import { lifecycle } from "./domain/overlap.js";
+import { rebuildOverlapsForUser } from "./overlap-service.js";
+import { DeterministicCruiseProvider } from "./providers/cruise-provider.js";
+import { opaqueToken, orderedPair, tokenHash } from "./security.js";
+import type { components } from '../../contracts/api.js';
+import { enforceResponses } from './contract-validation.js';
+
+type UserRow = { id: string; email: string; username: string; display_name: string | null; avatar_url: string | null; email_verified: boolean; last_active_at: Date };
+type SettingRow = { nearby_port_threshold_km: number; email_notifications: boolean };
+type ConnectionRow = { id: string; created_at: Date };
+type OverlapRow = UserRow & { overlap_id: string; type: "same_port" | "nearby_port" | "same_ship"; starts_at: Date; ends_at: Date; port_calls: unknown[]; distance_km: number | null; intent_status: string; intent_updated_at: Date | null };
+type PokeRow = { starts_at: Date; user_low: string; user_high: string };
+const username = z.string().min(3).max(32).regex(/^[A-Za-z0-9_]+$/);
+const uuid = z.string().uuid();
+
+function profile(row: UserRow): components['schemas']['Profile'] {
+  const hours = (Date.now() - new Date(row.last_active_at).getTime()) / 3_600_000;
+  const lastActiveLabel = hours < 1 ? "recently" : hours < 24 ? "hours_ago" : hours < 48 ? "yesterday" : "older";
+  return { id: row.id, username: row.username, displayName: row.display_name ?? undefined, avatarUrl: row.avatar_url ?? undefined, emailVerified: row.email_verified, lastActiveLabel };
+}
+
+export function buildApp(config: AppConfig, db?: Database) {
+  const app = Fastify({ logger: config.LOG_LEVEL === "silent" ? false : { level: config.LOG_LEVEL, redact: ["req.headers.authorization", "req.body.password", "req.body.token", "req.body.idToken"] } });
+  app.register(helmet); app.register(sensible); app.register(cors, { origin: config.APP_ORIGIN });
+  enforceResponses(app);
+  app.register(rateLimit, { max: 100, timeWindow: "1 minute" }); app.register(jwt, { secret: config.JWT_SECRET });
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof ZodError) return reply.status(422).type("application/problem+json").send({ type: "validation", title: "Invalid request", status: 422, detail: error.issues.map((item) => item.message).join(", ") });
+    if ((error as { code?: string }).code === "23505") return reply.status(409).type("application/problem+json").send({ type: "conflict", title: "Conflict", status: 409 });
+    app.log.error(error); const status = (error as { statusCode?: number }).statusCode ?? 500;
+    return reply.status(status).type("application/problem+json").send({ type: "request-failed", title: "Request failed", status, detail: status < 500 && error instanceof Error ? error.message : undefined });
+  });
+  const requireDb = () => { if (!db) throw app.httpErrors.serviceUnavailable("Database is not configured"); return db; };
+  const userId = (request: FastifyRequest) => (request.user as { sub: string }).sub;
+  const authenticate = async (request: FastifyRequest) => {
+    await request.jwtVerify<{ sub: string }>();
+    const row = (await requireDb().query<UserRow>('SELECT * FROM users WHERE id=$1', [userId(request)])).rows[0];
+    if (!row?.email_verified) throw app.httpErrors.unauthorized();
+    await requireDb().query("UPDATE users SET last_active_at=now() WHERE id=$1 AND last_active_at < now()-interval '15 minutes'", [row.id]);
+  };
+  const getUser = async (id: string) => { const result = await requireDb().query<UserRow>("SELECT * FROM users WHERE id=$1", [id]); if (!result.rows[0]) throw app.httpErrors.notFound(); return result.rows[0]; };
+  const session = async (row: UserRow) => ({ accessToken: await app.jwt.sign({ sub: row.id }, { expiresIn: "1h" }), user: profile(row) });
+
+  app.get("/api/v1/health", async (_request, reply) => {
+    if (!db) return { status: "ok" as const, database: "unknown" as const };
+    try { await db.query("SELECT 1"); return { status: "ok" as const, database: "healthy" as const }; }
+    catch { return reply.status(503).send({ status: "ok" as const, database: "unhealthy" as const }); }
+  });
+  app.post("/api/v1/auth/register", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (request, reply) => {
+    if (!config.SMTP_URL && config.NODE_ENV !== "test") throw app.httpErrors.serviceUnavailable("Email verification delivery is not configured");
+    const body = z.object({ email: z.string().email(), password: z.string().min(12), username }).parse(request.body); const id = randomUUID(); const token = opaqueToken();
+    const passwordHash = await bcrypt.hash(body.password, 12);
+    await transaction(requireDb(), async client => {
+      await client.query("INSERT INTO users(id,email,password_hash,username) VALUES($1,lower($2),$3,$4)", [id, body.email, passwordHash, body.username]);
+      await client.query("INSERT INTO user_settings(user_id) VALUES($1)", [id]);
+      await client.query("INSERT INTO email_verification_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '24 hours')", [tokenHash(token), id]);
+    });
+    await sendVerificationEmail(config, body.email, token); if (config.NODE_ENV === "test") reply.header("x-portmate-test-verification-token", token); return reply.status(202).send({ verificationRequired: true });
+  });
+  app.post("/api/v1/auth/verify-email", async (request, reply) => {
+    const { token } = z.object({ token: z.string().min(20) }).parse(request.body);
+    await transaction(requireDb(), async client => {
+      const result = await client.query<{user_id:string}>("UPDATE email_verification_tokens SET used_at=now() WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() RETURNING user_id",[tokenHash(token)]);
+      if (!result.rows[0]) throw app.httpErrors.badRequest('Token is invalid or expired');
+      await client.query('UPDATE users SET email_verified=true WHERE id=$1',[result.rows[0].user_id]);
+    });
+    return reply.status(204).send();
+  });
+  app.post("/api/v1/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request) => {
+    const body = z.object({ email: z.string().email(), password: z.string() }).parse(request.body); const result = await requireDb().query<UserRow & { password_hash: string | null }>("SELECT * FROM users WHERE email=lower($1)", [body.email]); const row = result.rows[0];
+    if (!row?.password_hash || !await bcrypt.compare(body.password, row.password_hash)) throw app.httpErrors.unauthorized("Invalid credentials"); if (!row.email_verified) throw app.httpErrors.forbidden("Email verification required"); return session(row);
+  });
+  app.post("/api/v1/auth/google", async (request) => {
+    const { idToken } = z.object({ idToken: z.string().min(20) }).parse(request.body); if (!config.GOOGLE_CLIENT_ID) throw app.httpErrors.serviceUnavailable("Google authentication is not configured");
+    const ticket = await new OAuth2Client(config.GOOGLE_CLIENT_ID).verifyIdToken({idToken,audience:config.GOOGLE_CLIENT_ID}).catch(()=>{throw app.httpErrors.unauthorized('Invalid Google identity');});
+    const payload = ticket.getPayload();
+    if (!payload?.sub || !payload.email || !payload.email_verified) throw app.httpErrors.unauthorized('Google identity is not verified');
+    const row = await transaction(requireDb(), async client => {
+      const found = (await client.query<UserRow & {google_subject:string|null}>('SELECT * FROM users WHERE google_subject=$1 OR email=lower($2) FOR UPDATE',[payload.sub,payload.email])).rows;
+      const existing = found.find(user=>user.google_subject===payload.sub) ?? found[0];
+      if (existing) {
+        if (existing.google_subject && existing.google_subject!==payload.sub) throw app.httpErrors.conflict('Account is linked to another identity');
+        // An unverified password registration must not become an attacker login after Google verifies the email.
+        return (await client.query<UserRow>('UPDATE users SET email_verified=true,google_subject=$2,password_hash=CASE WHEN email_verified THEN password_hash ELSE NULL END WHERE id=$1 RETURNING *',[existing.id,payload.sub])).rows[0];
+      }
+      const base=(payload.name??payload.email!.split('@')[0]).replace(/[^A-Za-z0-9_]/g,'_').slice(0,24)||'portmate';
+      const created=(await client.query<UserRow>('INSERT INTO users(id,email,username,display_name,avatar_url,email_verified,google_subject) VALUES($1,lower($2),$3,$4,$5,true,$6) RETURNING *',[randomUUID(),payload.email,`${base}_${randomUUID().slice(0,6)}`,payload.name?.slice(0,80)??null,payload.picture??null,payload.sub])).rows[0];
+      await client.query('INSERT INTO user_settings(user_id) VALUES($1)',[created.id]);
+      return created;
+    });
+    return session(row);
+  });
+
+  app.get("/api/v1/me", { preHandler: authenticate }, async (request) => profile(await getUser(userId(request))));
+  app.patch("/api/v1/me", { preHandler: authenticate }, async (request) => { const body = z.object({ username: username.optional(), displayName: z.string().max(80).nullable().optional(), avatarUrl: z.string().url().nullable().optional() }).parse(request.body); const current = await getUser(userId(request)); const result = await requireDb().query<UserRow>("UPDATE users SET username=$2,display_name=$3,avatar_url=$4 WHERE id=$1 RETURNING *", [current.id, body.username ?? current.username, body.displayName === undefined ? current.display_name : body.displayName, body.avatarUrl === undefined ? current.avatar_url : body.avatarUrl]); return profile(result.rows[0]); });
+  app.get("/api/v1/settings", { preHandler: authenticate }, async (request) => { const row = (await requireDb().query<SettingRow>("SELECT * FROM user_settings WHERE user_id=$1", [userId(request)])).rows[0]; return { nearbyPortThresholdKm: Number(row.nearby_port_threshold_km), emailNotifications: row.email_notifications }; });
+  app.patch("/api/v1/settings", { preHandler: authenticate }, async (request) => { const body = z.object({ nearbyPortThresholdKm: z.number().min(1).max(500), emailNotifications: z.boolean().optional() }).parse(request.body); const row = (await requireDb().query<SettingRow>("UPDATE user_settings SET nearby_port_threshold_km=$2,email_notifications=COALESCE($3,email_notifications) WHERE user_id=$1 RETURNING *", [userId(request), body.nearbyPortThresholdKm, body.emailNotifications])).rows[0]; await rebuildOverlapsForUser(requireDb(), userId(request)); return { nearbyPortThresholdKm: Number(row.nearby_port_threshold_km), emailNotifications: row.email_notifications }; });
+
+  app.get("/api/v1/ships/companies", { preHandler: authenticate }, async () => (await requireDb().query("SELECT id,name FROM cruise_companies ORDER BY name")).rows);
+  app.get("/api/v1/ships", { preHandler: authenticate }, async (request) => { const { companyId } = z.object({ companyId: z.string().optional() }).parse(request.query); return (await requireDb().query("SELECT s.id,s.name,json_build_object('id',c.id,'name',c.name) company FROM ships s JOIN cruise_companies c ON c.id=s.company_id WHERE ($1::text IS NULL OR c.id=$1) ORDER BY s.name", [companyId ?? null])).rows; });
+  const assignment = z.object({ companyId: z.string().min(1), shipId: z.string().min(1), startDate: z.string().date(), endDate: z.string().date() }).refine((item) => item.startDate <= item.endDate, "Invalid assignment interval");
+  const assignmentSelect = "id,company_id AS \"companyId\",ship_id AS \"shipId\",start_date::text AS \"startDate\",end_date::text AS \"endDate\",created_at AS \"createdAt\"";
+  app.get("/api/v1/assignments", { preHandler: authenticate }, async (request) => (await requireDb().query(`SELECT ${assignmentSelect} FROM assignments WHERE user_id=$1 ORDER BY start_date`, [userId(request)])).rows);
+  const saveAssignment = async (id:string, owner:string, body:z.infer<typeof assignment>, update=false) => {
+    await transaction(requireDb(), async client => {
+      await client.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [owner]);
+      if (update && !(await client.query("SELECT 1 FROM assignments WHERE id=$1 AND user_id=$2",[id,owner])).rowCount) throw app.httpErrors.notFound();
+      if (!(await client.query("SELECT 1 FROM ships WHERE id=$1 AND company_id=$2",[body.shipId,body.companyId])).rowCount) throw app.httpErrors.unprocessableEntity('Ship does not belong to company');
+      if ((await client.query("SELECT 1 FROM assignments WHERE user_id=$1 AND id<>$4 AND start_date<=$3::date AND end_date>=$2::date",[owner,body.startDate,body.endDate,id])).rowCount) throw app.httpErrors.unprocessableEntity('Assignment dates overlap');
+      if(update) await client.query("UPDATE assignments SET company_id=$3,ship_id=$4,start_date=$5,end_date=$6 WHERE id=$1 AND user_id=$2",[id,owner,body.companyId,body.shipId,body.startDate,body.endDate]);
+      else await client.query("INSERT INTO assignments(id,user_id,company_id,ship_id,start_date,end_date) VALUES($1,$2,$3,$4,$5,$6)",[id,owner,body.companyId,body.shipId,body.startDate,body.endDate]);
+      await refreshItinerary(client,body.shipId,body.startDate,body.endDate);
+    });
+    await rebuildOverlapsForUser(requireDb(),owner);
+    return (await requireDb().query(`SELECT ${assignmentSelect} FROM assignments WHERE id=$1`,[id])).rows[0];
+  };
+  app.post("/api/v1/assignments", {preHandler:authenticate},async(request,reply) => {
+    const result=await saveAssignment(randomUUID(),userId(request),assignment.parse(request.body));
+    return reply.status(201).send(result);
+  });
+  app.patch("/api/v1/assignments/:assignmentId",{preHandler:authenticate},async request => {
+    const {assignmentId}=z.object({assignmentId:uuid}).parse(request.params);
+    return saveAssignment(assignmentId,userId(request),assignment.parse(request.body),true);
+  });
+  app.delete("/api/v1/assignments/:assignmentId", { preHandler: authenticate }, async (request, reply) => { const { assignmentId } = z.object({ assignmentId: uuid }).parse(request.params); const result = await requireDb().query("DELETE FROM assignments WHERE id=$1 AND user_id=$2", [assignmentId, userId(request)]); if (!result.rowCount) throw app.httpErrors.notFound(); await rebuildOverlapsForUser(requireDb(), userId(request)); return reply.status(204).send(); });
+  app.get("/api/v1/itinerary", { preHandler: authenticate }, async (request) => {
+    const { assignmentId } = z.object({ assignmentId: uuid }).parse(request.query);
+    const owned = (await requireDb().query<{ship_id:string;start_date:string;end_date:string}>("SELECT ship_id,start_date::text,end_date::text FROM assignments WHERE id=$1 AND user_id=$2", [assignmentId,userId(request)])).rows[0];
+    if (!owned) throw app.httpErrors.notFound();
+    const calls = await requireDb().query('SELECT port_id AS "portId",port_name AS "portName",country_code AS "countryCode",GREATEST(arrival_at,$2::timestamptz) AS "arrivalAt",LEAST(departure_at,$3::timestamptz) AS "departureAt",latitude,longitude FROM port_calls WHERE ship_id=$1 AND arrival_at<$3::timestamptz AND departure_at>$2::timestamptz ORDER BY arrival_at',
+      [owned.ship_id, owned.start_date+'T00:00:00Z', new Date(new Date(owned.end_date+'T00:00:00Z').getTime()+86400000)]);
+    return {assignmentId,portCalls:calls.rows};
+  });
+
+  app.get("/api/v1/connections", { preHandler: authenticate }, async (request) => { const id = userId(request); const rows = (await requireDb().query<UserRow & { connection_id: string; created_at: Date }>("SELECT u.*,c.id connection_id,c.created_at FROM connections c JOIN users u ON u.id=CASE WHEN c.user_low=$1 THEN c.user_high ELSE c.user_low END WHERE (c.user_low=$1 OR c.user_high=$1) AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1))", [id])).rows; return rows.map((row) => ({ id: row.connection_id, profile: profile(row), createdAt: row.created_at })); });
+  app.post("/api/v1/connections/qr", { preHandler: authenticate }, async (request, reply) => { const token = opaqueToken(); const expiresAt = new Date(Date.now() + 600_000); await requireDb().query("INSERT INTO connection_tokens(token_hash,issuer_id,expires_at) VALUES($1,$2,$3)", [tokenHash(token), userId(request), expiresAt]); return reply.status(201).send({ token, expiresAt }); });
+  app.post("/api/v1/connections/claim", { preHandler: authenticate }, async (request, reply) => {
+    const { token } = z.object({ token: z.string().min(20) }).parse(request.body);
+    const claimant = userId(request);
+    const result = await transaction(requireDb(), async client => {
+      const tokenRow = (await client.query<{issuer_id:string}>("SELECT issuer_id FROM connection_tokens WHERE token_hash=$1 AND claimed_at IS NULL AND expires_at>now()",[tokenHash(token)])).rows[0];
+      if (!tokenRow || tokenRow.issuer_id === claimant) throw app.httpErrors.conflict('Invalid connection token');
+      const [low,high] = orderedPair(tokenRow.issuer_id,claimant);
+      await client.query("SELECT id FROM users WHERE id IN ($1,$2) ORDER BY id FOR UPDATE",[low,high]);
+      if ((await client.query("SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",[low,high])).rowCount) throw app.httpErrors.forbidden();
+      const consumed = await client.query("UPDATE connection_tokens SET claimed_at=now(),claimed_by=$2 WHERE token_hash=$1 AND claimed_at IS NULL AND expires_at>now()",[tokenHash(token),claimant]);
+      if (!consumed.rowCount) throw app.httpErrors.conflict('Token already consumed');
+      const row = (await client.query<ConnectionRow>("INSERT INTO connections(id,user_low,user_high) VALUES($1,$2,$3) ON CONFLICT(user_low,user_high) DO UPDATE SET user_low=EXCLUDED.user_low RETURNING id,created_at",[randomUUID(),low,high])).rows[0];
+      return {row,issuerId:tokenRow.issuer_id};
+    });
+    await rebuildOverlapsForUser(requireDb(),claimant);
+    return reply.status(201).send({id:result.row.id,profile:profile(await getUser(result.issuerId)),createdAt:result.row.created_at});
+  });
+  app.delete("/api/v1/connections/:connectionId", { preHandler: authenticate }, async (request, reply) => { const { connectionId } = z.object({ connectionId: uuid }).parse(request.params); const result = await requireDb().query("DELETE FROM connections WHERE id=$1 AND (user_low=$2 OR user_high=$2)", [connectionId, userId(request)]); if (!result.rowCount) throw app.httpErrors.notFound(); return reply.status(204).send(); });
+  app.post("/api/v1/blocks", { preHandler: authenticate }, async (request, reply) => {
+    const { userId: target } = z.object({ userId: uuid }).parse(request.body);
+    const id = userId(request);
+    if (id === target) throw app.httpErrors.unprocessableEntity();
+    const [low, high] = orderedPair(id, target);
+    await transaction(requireDb(), async client => {
+      await client.query("SELECT id FROM users WHERE id IN ($1,$2) ORDER BY id FOR UPDATE", [low, high]);
+      await client.query("INSERT INTO blocks(blocker_id,blocked_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [id, target]);
+      await client.query("DELETE FROM connections WHERE user_low=$1 AND user_high=$2", [low, high]);
+      await client.query("UPDATE overlap_events SET suppressed=true WHERE user_low=$1 AND user_high=$2", [low, high]);
+    });
+    return reply.status(201).send();
+  });
+
+  app.get("/api/v1/overlaps", { preHandler: authenticate }, async (request) => { const { lifecycle: wanted } = z.object({ lifecycle: z.enum(["future", "current", "expired"]).optional() }).parse(request.query); const id = userId(request); await rebuildOverlapsForUser(requireDb(), id); const rows = (await requireDb().query<OverlapRow>("SELECT o.*,u.*,o.id overlap_id FROM overlap_events o JOIN connections c ON c.user_low=o.user_low AND c.user_high=o.user_high JOIN users u ON u.id=CASE WHEN o.user_low=$1 THEN o.user_high ELSE o.user_low END WHERE (o.user_low=$1 OR o.user_high=$1) AND o.suppressed=false AND (o.type<>'nearby_port' OR o.distance_km <= (SELECT nearby_port_threshold_km FROM user_settings WHERE user_id=$1)) ORDER BY o.starts_at", [id])).rows; return rows.map((row) => ({ id: row.overlap_id, connection: profile(row), type: row.type, lifecycle: lifecycle(new Date(row.starts_at), new Date(row.ends_at)), startsAt: row.starts_at, endsAt: row.ends_at, portCalls: row.port_calls, distanceKm: row.distance_km == null ? undefined : Number(row.distance_km), meetingIntent: { status: row.intent_status, updatedAt: row.intent_updated_at ?? undefined } })).filter((item) => !wanted || item.lifecycle === wanted); });
+  app.post("/api/v1/overlaps/:overlapId/poke", { preHandler: authenticate }, async (request,reply) => {
+    const { overlapId } = z.object({overlapId:uuid}).parse(request.params); const id=userId(request);
+    await transaction(requireDb(),async client => {
+      const row=(await client.query<PokeRow>("SELECT o.* FROM overlap_events o JOIN connections c ON c.user_low=o.user_low AND c.user_high=o.user_high WHERE o.id=$1 AND (o.user_low=$2 OR o.user_high=$2) AND o.suppressed=false FOR UPDATE",[overlapId,id])).rows[0];
+      if (!row || new Date(row.starts_at)<=new Date()) throw app.httpErrors.conflict('Pokes require an active connection and future overlap');
+      const changed=await client.query("UPDATE overlap_events SET intent_sender_id=$2,intent_status='poked',intent_updated_at=now() WHERE id=$1 AND intent_status='none'",[overlapId,id]);
+      if (!changed.rowCount) throw app.httpErrors.conflict();
+      await createNotification(client,row.user_low===id?row.user_high:row.user_low,overlapId,'poke_received',`poke:${overlapId}`);
+    });
+    return reply.status(201).send({status:'poked',updatedAt:new Date()});
+  });
+  app.patch("/api/v1/overlaps/:overlapId/intent", {preHandler:authenticate},async request => {
+    const {overlapId}=z.object({overlapId:uuid}).parse(request.params);
+    const {status}=z.object({status:z.enum(['interested','not_interested'])}).parse(request.body);
+    await transaction(requireDb(),async client => {
+      const result=await client.query<{intent_sender_id:string}>("UPDATE overlap_events SET intent_status=$3,intent_updated_at=now() WHERE id=$1 AND (user_low=$2 OR user_high=$2) AND suppressed=false AND ends_at>now() AND intent_status='poked' AND intent_sender_id<>$2 AND EXISTS(SELECT 1 FROM connections c WHERE c.user_low=overlap_events.user_low AND c.user_high=overlap_events.user_high) RETURNING intent_sender_id",[overlapId,userId(request),status]);
+      if(!result.rows[0]) throw app.httpErrors.forbidden();
+      await createNotification(client,result.rows[0].intent_sender_id,overlapId,'poke_response',`response:${overlapId}:${status}`);
+    });
+    return {status,updatedAt:new Date()};
+  });
+  app.get("/api/v1/notifications", { preHandler: authenticate }, async (request) => (await requireDb().query("SELECT id,type,created_at AS \"createdAt\",read,overlap_id AS \"overlapId\" FROM notifications WHERE user_id=$1 ORDER BY created_at DESC", [userId(request)])).rows);
+  return app;
+}
+
+async function refreshItinerary(db: Database, shipId: string, startDate: string, endDate: string) { const calls = await new DeterministicCruiseProvider().getPortCalls(shipId, new Date(`${startDate}T00:00:00Z`), new Date(`${endDate}T23:59:59Z`)); for (const call of calls) await db.query("INSERT INTO port_calls(id,ship_id,port_id,port_name,country_code,arrival_at,departure_at,latitude,longitude) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO UPDATE SET arrival_at=EXCLUDED.arrival_at,departure_at=EXCLUDED.departure_at,source_updated_at=now()", [call.id, call.shipId, call.portId, call.portName, call.countryCode, call.arrivalAt, call.departureAt, call.latitude, call.longitude]); }
+async function createNotification(db: Database, recipient: string, overlapId: string, type: string, key: string) { await db.query("INSERT INTO notifications(id,user_id,overlap_id,type,deduplication_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(deduplication_key) DO NOTHING", [randomUUID(), recipient, overlapId, type, key]); }
+async function sendVerificationEmail(config: AppConfig, recipient: string, token: string) { if (!config.SMTP_URL) return; await nodemailer.createTransport(config.SMTP_URL).sendMail({ from: config.EMAIL_FROM, to: recipient, subject: "Verify your PortMate email", text: `Verify your email: ${config.APP_ORIGIN}/verify-email?token=${encodeURIComponent(token)}` }); }

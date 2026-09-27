@@ -1,0 +1,47 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: mobile/Dockerfile
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${PORTMATE_PORT:-3000}:80"
+  app:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://portmate:${POSTGRES_PASSWORD}@db:5432/portmate
+      JWT_SECRET: ${JWT_SECRET}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SMTP_URL: ${SMTP_URL:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@portmate.local}
+      LOG_LEVEL: info
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: portmate
+      POSTGRES_USER: portmate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - portmate-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portmate -d portmate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  portmate-postgres:
