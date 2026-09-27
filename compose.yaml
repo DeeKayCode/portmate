@@ -1,7 +1,8 @@
 services:
   web:
     build:
-      context: ./mobile
+      context: .
+      dockerfile: mobile/Dockerfile
     depends_on:
       app:
         condition: service_healthy
@@ -9,7 +10,8 @@ services:
       - "${PORTMATE_PORT:-3000}:80"
   app:
     build:
-      context: ./server
+      context: .
+      dockerfile: server/Dockerfile
     environment:
       NODE_ENV: production
       PORT: 3000

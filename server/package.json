@@ -12,9 +12,10 @@
     "migrate": "node dist/migrate.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test --test-isolation=none .test-dist/test/**/*.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/**/*.test.js",
     "lint": "eslint .",
-    "validate:contracts": "node scripts/validate-contracts.mjs"
+    "generate:contracts": "node scripts/validate-contracts.mjs --write",
+    "validate:contracts": "node scripts/validate-contracts.mjs && npm run typecheck && npm --prefix ../mobile run typecheck"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.0",
@@ -22,6 +23,8 @@
     "@fastify/jwt": "^10.2.2",
     "@fastify/rate-limit": "^10.2.1",
     "@fastify/sensible": "^6.0.2",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "bcryptjs": "^3.0.2",
     "fastify": "^5.2.1",
     "google-auth-library": "^11.1.0",
@@ -36,6 +39,7 @@
     "@types/pg": "^8.11.11",
     "eslint": "^9.20.1",
     "pg-mem": "^3.0.5",
+    "openapi-typescript": "^7.13.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.24.0",

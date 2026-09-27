@@ -13,7 +13,7 @@ PortMate is not a general social network. It has no chat, feed, posts, stories, 
 - `mobile/`: Gemini-owned responsive PWA frontend.
 - `server/`: GPT-owned TypeScript/Fastify application, PostgreSQL persistence, background processing and API.
 - PostgreSQL is the only required data service. Docker Compose runs the application and database as one deployable PortMate system.
-- `/contracts` contains versioned OpenAPI and JSON Schema boundary contracts. GPT owns compatible backend-side contract changes; Gemini consumes them.
+- `contracts/openapi.yaml` is the canonical HTTP/API contract beneath current explicit human-approved requirements. API model JSON Schema and shared TypeScript types are generated from it. GPT owns compatible backend-side contract changes; Gemini consumes them.
 - A production cruise-data provider is optional configuration. The application must use a provider abstraction and deterministic development data without prohibited scraping.
 
 ## Core domain

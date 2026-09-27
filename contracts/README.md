@@ -1,7 +1,7 @@
 # PortMate API contracts
 
-These versioned files are the shared frontend/backend boundary for the PortMate PWA. `openapi.yaml` defines synchronous HTTP API; `models.schema.json` defines domain payloads; `events.schema.json` defines persisted-notification and future transport envelopes.
+Authority: explicit current human-approved product requirements > `openapi.yaml` > generated artifacts > implementation. OpenAPI alone defines HTTP request/response models. `models.schema.json`, `api.d.ts` and `server/src/generated/contracts.ts` are generated from it, never independently edited. `events.schema.json` describes internal event envelopes, not competing HTTP models.
 
-Gemini consumes contracts and does not edit them. GPT may add a compatible contract only when required by the active frontend handoff. Update all relevant files and `CHANGELOG.md` together. Removing fields, changing meanings or otherwise breaking a released contract needs human approval.
+Run `npm --prefix server run generate:contracts` after an approved canonical change. `npm --prefix server run validate:contracts` fails on missing/stale generated artifacts and type-checks both consumers. Backend success responses are validated against generated OpenAPI schemas at runtime, including integration tests. Gemini consumes shared generated types and may regenerate stale artifacts; canonical contract changes remain GPT-owned. Repair ordinary drift autonomously. Only contradictory human requirements require a human product decision.
 
 The version 1.0 baseline describes the approved product architecture. It does not grant any external provider credentials or production secrets.

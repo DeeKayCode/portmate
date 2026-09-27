@@ -35,11 +35,11 @@ if (-not $agyBin) {
 
 if ($ValidateOnly) {
     try {
-        $out = & $agyBin --help | Select-Object -First 3
+        $out = & $agyBin --version 2>&1
         if ($LASTEXITCODE -ne 0 -or -not $out) {
             exit 1
         }
-        Write-Host "Antigravity CLI verified at $agyBin"
+        Write-Host "Antigravity CLI verified at $agyBin ($out)"
         exit 0
     }
     catch {

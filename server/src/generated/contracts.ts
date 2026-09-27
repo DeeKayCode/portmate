@@ -1,4 +1,5 @@
-{
+// Generated from contracts/openapi.yaml; do not edit.
+export const models = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://portmate.example/contracts/models.schema.json",
   "$comment": "Generated from openapi.yaml. Run npm --prefix server run generate:contracts.",
@@ -519,4 +520,168 @@
       }
     }
   }
-}
+};
+export const responses: Record<string, Record<string, object>> = {
+  "GET /api/v1/health": {
+    "200": {
+      "$ref": "#/$defs/Health"
+    }
+  },
+  "POST /api/v1/auth/register": {
+    "202": {
+      "$ref": "#/$defs/VerificationPending"
+    }
+  },
+  "POST /api/v1/auth/login": {
+    "200": {
+      "$ref": "#/$defs/Session"
+    }
+  },
+  "POST /api/v1/auth/google": {
+    "200": {
+      "$ref": "#/$defs/Session"
+    }
+  },
+  "POST /api/v1/auth/verify-email": {},
+  "GET /api/v1/me": {
+    "200": {
+      "$ref": "#/$defs/Profile"
+    }
+  },
+  "PATCH /api/v1/me": {
+    "200": {
+      "$ref": "#/$defs/Profile"
+    }
+  },
+  "GET /api/v1/settings": {
+    "200": {
+      "$ref": "#/$defs/Settings"
+    }
+  },
+  "PATCH /api/v1/settings": {
+    "200": {
+      "$ref": "#/$defs/Settings"
+    }
+  },
+  "GET /api/v1/ships/companies": {
+    "200": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CruiseCompany"
+      }
+    }
+  },
+  "GET /api/v1/ships": {
+    "200": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Ship"
+      }
+    }
+  },
+  "GET /api/v1/assignments": {
+    "200": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Assignment"
+      }
+    }
+  },
+  "POST /api/v1/assignments": {
+    "201": {
+      "$ref": "#/$defs/Assignment"
+    }
+  },
+  "PATCH /api/v1/assignments/:assignmentId": {
+    "200": {
+      "$ref": "#/$defs/Assignment"
+    }
+  },
+  "DELETE /api/v1/assignments/:assignmentId": {},
+  "GET /api/v1/itinerary": {
+    "200": {
+      "$ref": "#/$defs/Itinerary"
+    }
+  },
+  "GET /api/v1/connections": {
+    "200": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Connection"
+      }
+    }
+  },
+  "POST /api/v1/connections/qr": {
+    "201": {
+      "$ref": "#/$defs/ConnectionToken"
+    }
+  },
+  "POST /api/v1/connections/claim": {
+    "201": {
+      "$ref": "#/$defs/Connection"
+    }
+  },
+  "DELETE /api/v1/connections/:connectionId": {},
+  "POST /api/v1/blocks": {},
+  "GET /api/v1/overlaps": {
+    "200": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Overlap"
+      }
+    }
+  },
+  "POST /api/v1/overlaps/:overlapId/poke": {
+    "201": {
+      "$ref": "#/$defs/MeetingIntent"
+    }
+  },
+  "PATCH /api/v1/overlaps/:overlapId/intent": {
+    "200": {
+      "$ref": "#/$defs/MeetingIntent"
+    }
+  },
+  "GET /api/v1/notifications": {
+    "200": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Notification"
+      }
+    }
+  }
+};
+export const requests: Record<string, object> = {
+  "POST /api/v1/auth/register": {
+    "$ref": "#/$defs/RegisterRequest"
+  },
+  "POST /api/v1/auth/login": {
+    "$ref": "#/$defs/LoginRequest"
+  },
+  "POST /api/v1/auth/google": {
+    "$ref": "#/$defs/GoogleAuthRequest"
+  },
+  "POST /api/v1/auth/verify-email": {
+    "$ref": "#/$defs/TokenRequest"
+  },
+  "PATCH /api/v1/me": {
+    "$ref": "#/$defs/ProfileUpdate"
+  },
+  "PATCH /api/v1/settings": {
+    "$ref": "#/$defs/Settings"
+  },
+  "POST /api/v1/assignments": {
+    "$ref": "#/$defs/AssignmentInput"
+  },
+  "PATCH /api/v1/assignments/:assignmentId": {
+    "$ref": "#/$defs/AssignmentInput"
+  },
+  "POST /api/v1/connections/claim": {
+    "$ref": "#/$defs/TokenRequest"
+  },
+  "POST /api/v1/blocks": {
+    "$ref": "#/$defs/BlockInput"
+  },
+  "PATCH /api/v1/overlaps/:overlapId/intent": {
+    "$ref": "#/$defs/MeetingIntentResponse"
+  }
+};

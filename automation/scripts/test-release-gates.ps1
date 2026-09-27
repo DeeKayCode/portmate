@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 try {
     $root = Split-Path (Split-Path $PSScriptRoot)
     Push-Location $root
+    & "$PSScriptRoot/sync-dependencies.ps1"
     $config = Get-Content automation/gates.json -Raw | ConvertFrom-Json
     if (!$config.approved) { throw 'RELEASE BLOCKED: gates are not approved.' }
     if ((Get-Content SPEC.md -Raw) -match 'BOOTSTRAP[_ ]PLACEHOLDER') { throw 'RELEASE BLOCKED: specification placeholder.' }

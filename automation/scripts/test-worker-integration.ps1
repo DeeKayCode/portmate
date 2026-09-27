@@ -74,6 +74,10 @@ try {
     'Fixture agent' | Set-Content prompts/gemini-worker.md
     @'
 param([string]$Component)
+if ($Component -eq 'contracts' -and $env:PORTMATE_FIXTURE_PREFLIGHT -eq '1') {
+    $global:LASTEXITCODE = 1
+    return
+}
 if ($Component -eq 'client' -and $env:PORTMATE_FIXTURE_DIRTY_GATE -eq '1') {
     'gate output' | Set-Content mobile/gate-output.txt
 }
@@ -83,6 +87,12 @@ $global:LASTEXITCODE = 0
     @'
 param($Prompt, $RepositoryPath)
 $sha = [regex]::Match($Prompt, 'Trigger SHA: ([0-9a-f]{40})').Groups[1].Value
+if ($env:PORTMATE_FIXTURE_DECISION -eq '1') {
+    & ./automation/scripts/report-human-decision.ps1 -TriggerSha $sha -ConflictingRequirements 'Fixture contradiction A versus B' -AffectedComponents 'fixture' -Decision 'Choose A or B'
+    $global:LASTEXITCODE = 0
+    return
+}
+if ($env:PORTMATE_FIXTURE_PREFLIGHT -eq '1' -and $Prompt -notmatch 'TECHNICAL_REPAIR_REQUIRED:') { throw 'Missing autonomous repair context.' }
 if (!(Test-Path mobile/recovered.txt)) {
     'agent-owned content' | Set-Content mobile/recovered.txt
     & ./automation/scripts/checkpoint-agent-work.ps1 -Role gemini -TriggerSha $sha -ConfirmAgentOwned
@@ -104,6 +114,14 @@ $global:LASTEXITCODE = 0
         Run-Git commit -m '[GPT] fixture product handoff'
         Run-Git push origin client
         $productTrigger = & git.exe rev-parse HEAD
+        $env:PORTMATE_FIXTURE_DECISION = '1'
+        Worker gemini $productTrigger $false
+        if ($LASTEXITCODE -ne 78) { throw 'Human decision is not distinguishable from technical failure.' }
+        if ((& git.exe rev-parse origin/client) -ne $productTrigger) { throw 'Human decision unexpectedly pushed.' }
+        if (!(Test-Path .git/portmate-human-decision.json)) { throw 'Decision record was not preserved.' }
+        Remove-Item -LiteralPath (Join-Path (Get-Location) '.git/portmate-human-decision.json')
+        $env:PORTMATE_FIXTURE_DECISION = $null
+        $env:PORTMATE_FIXTURE_PREFLIGHT = '1'
         Worker gemini $productTrigger $false
         if ((& git.exe rev-parse origin/client) -ne $productTrigger) { throw 'Failed agent pushed.' }
         'unattributed' | Set-Content unknown.txt
@@ -120,8 +138,32 @@ $global:LASTEXITCODE = 0
         if (& git.exe status --porcelain --untracked-files=all) { throw 'Recovered handoff left changes.' }
         if ((& git.exe rev-parse HEAD) -ne (& git.exe rev-parse origin/client)) { throw 'Recovery did not push.' }
         if (Test-Path .git/portmate-agent-checkpoint.json) { throw 'Successful checkpoint was not cleared.' }
-    } finally { $env:PORTMATE_GEMINI_ADAPTER = $previousAdapter; $env:PORTMATE_FIXTURE_DIRTY_GATE = $null }
-    Write-Host 'PASS: handshake, replay/stale protection, dirty handoff rejection, checkpoint attribution, unknown preservation and product recovery through push.'
+        # Human-requested maintenance stays separate from normal worker handoffs.
+        $auditTrigger = & git.exe rev-parse HEAD
+        New-Item -ItemType Directory docs -Force | Out-Null
+        'reviewed maintenance' | Set-Content docs/maintenance.txt
+        Run-Git add docs/maintenance.txt
+        Run-Git commit -m 'chore: reviewed fixture maintenance'
+        'unknown human content' | Set-Content unknown.txt
+        & pwsh -NoProfile -File automation/scripts/publish-reviewed-maintenance.ps1 -ExpectedRemoteSha $auditTrigger 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0 -or !(Test-Path unknown.txt)) { throw 'Maintenance did not preserve unknown dirty work.' }
+        Remove-Item -LiteralPath (Join-Path (Get-Location) unknown.txt)
+        & pwsh -NoProfile -File automation/scripts/publish-reviewed-maintenance.ps1 -ExpectedRemoteSha $auditTrigger
+        if ($LASTEXITCODE) { throw 'Reviewed maintenance publication failed.' }
+        $maintenanceHead = & git.exe rev-parse HEAD
+        'concrete frontend repair' | Set-Content docs/repair.txt
+        Run-Git add docs/repair.txt
+        Run-Git commit -m '[GPT] fixture audit repairs' -m "PortMate-Trigger: $auditTrigger"
+        & pwsh -NoProfile -File automation/scripts/publish-reviewed-maintenance.ps1 -ExpectedRemoteSha $maintenanceHead -AuditTriggerSha $auditTrigger
+        if ($LASTEXITCODE) { throw 'Post-maintenance repair dispatch failed.' }
+        $repairHead = & git.exe rev-parse HEAD
+        'must not publish arbitrary code as audit dispatch' | Set-Content mobile/disallowed.txt
+        Run-Git add mobile/disallowed.txt
+        Run-Git commit -m '[GPT] invalid audit dispatch' -m "PortMate-Trigger: $auditTrigger"
+        & pwsh -NoProfile -File automation/scripts/publish-reviewed-maintenance.ps1 -ExpectedRemoteSha $repairHead -AuditTriggerSha $auditTrigger 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0 -or (& git.exe rev-parse origin/client) -ne $repairHead) { throw 'Superseded/arbitrary audit dispatch was published.' }
+    } finally { $env:PORTMATE_GEMINI_ADAPTER = $previousAdapter; $env:PORTMATE_FIXTURE_DIRTY_GATE = $null; $env:PORTMATE_FIXTURE_DECISION = $null; $env:PORTMATE_FIXTURE_PREFLIGHT = $null }
+    Write-Host 'PASS: handshake, replay/stale protection, dirty handoff rejection, checkpoint attribution, unknown preservation, human decision status, technical preflight repair and product recovery through push.'
 } finally {
     Pop-Location
     $resolved = [IO.Path]::GetFullPath($fixture)

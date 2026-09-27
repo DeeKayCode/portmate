@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { Database } from "./db.js";
+import { transaction, type Database } from "./db.js";
 import { findPortOverlaps, intersectIntervals, type TimedLocation } from "./domain/overlap.js";
 import { orderedPair } from "./security.js";
 
@@ -20,17 +20,28 @@ export async function rebuildOverlapsForUser(db: Database, userId: string) {
 
 async function rebuildPair(db: Database, firstUserId: string, secondUserId: string) {
   const [userLow, userHigh] = orderedPair(firstUserId, secondUserId);
+  await transaction(db, async client => {
+    await client.query('SELECT id FROM users WHERE id IN ($1,$2) ORDER BY id FOR UPDATE',[userLow,userHigh]);
+    if (!(await client.query('SELECT 1 FROM connections WHERE user_low=$1 AND user_high=$2',[userLow,userHigh])).rowCount) return;
+    await rebuildLockedPair(client,userLow,userHigh);
+  });
+}
+
+async function rebuildLockedPair(db: Database, firstUserId: string, secondUserId: string) {
+  const [userLow, userHigh] = orderedPair(firstUserId, secondUserId);
+  await db.query('UPDATE overlap_events SET suppressed=true WHERE user_low=$1 AND user_high=$2', [userLow,userHigh]);
   const [firstAssignments, secondAssignments, firstCalls, secondCalls, setting] = await Promise.all([
     db.query<AssignmentRow>("SELECT ship_id, start_date::text, end_date::text FROM assignments WHERE user_id = $1", [firstUserId]),
     db.query<AssignmentRow>("SELECT ship_id, start_date::text, end_date::text FROM assignments WHERE user_id = $1", [secondUserId]),
     callsForUser(db, firstUserId), callsForUser(db, secondUserId),
-    db.query<{ nearby_port_threshold_km: number }>("SELECT nearby_port_threshold_km FROM user_settings WHERE user_id = $1", [firstUserId]),
+    db.query<{ nearby_port_threshold_km: number }>("SELECT MAX(nearby_port_threshold_km) nearby_port_threshold_km FROM user_settings WHERE user_id IN ($1,$2)", [firstUserId,secondUserId]),
   ]);
   const sameShip: { startsAt: Date; endsAt: Date }[] = [];
   for (const a of firstAssignments.rows) {
     for (const b of secondAssignments.rows) {
       if (a.ship_id !== b.ship_id) continue;
-      const interval = intersectIntervals(new Date(`${a.start_date}T00:00:00Z`), new Date(`${a.end_date}T23:59:59.999Z`), new Date(`${b.start_date}T00:00:00Z`), new Date(`${b.end_date}T23:59:59.999Z`));
+      const nextDay = (date:string) => new Date(new Date(`${date}T00:00:00Z`).getTime()+86400000);
+      const interval = intersectIntervals(new Date(`${a.start_date}T00:00:00Z`), nextDay(a.end_date), new Date(`${b.start_date}T00:00:00Z`), nextDay(b.end_date));
       if (!interval) continue;
       sameShip.push(interval);
       await upsertOverlap(db, { userLow, userHigh, type: "same_ship", ...interval, portCalls: [], distanceKm: null, suppressed: false });
@@ -45,7 +56,8 @@ async function rebuildPair(db: Database, firstUserId: string, secondUserId: stri
 
 async function callsForUser(db: Database, userId: string) {
   const result = await db.query<CallRow>(
-    `SELECT p.port_id, p.port_name, p.arrival_at, p.departure_at, p.latitude, p.longitude
+    `SELECT p.port_id, p.port_name, GREATEST(p.arrival_at,a.start_date::timestamp AT TIME ZONE 'UTC') arrival_at,
+            LEAST(p.departure_at,(a.end_date+1)::timestamp AT TIME ZONE 'UTC') departure_at, p.latitude, p.longitude
        FROM assignments a JOIN port_calls p ON p.ship_id = a.ship_id
       WHERE a.user_id = $1 AND p.arrival_at::date <= a.end_date AND p.departure_at::date >= a.start_date`, [userId],
   );

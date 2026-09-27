@@ -21,6 +21,7 @@ Requires Node.js 22+.
 
 ```sh
 npm --prefix server ci
+npm --prefix mobile ci
 npm --prefix server run validate:contracts
 npm --prefix server test
 npm --prefix server run dev
@@ -28,7 +29,7 @@ npm --prefix server run dev
 
 Set `DATABASE_URL` and `JWT_SECRET` first. The server applies the idempotent SQL migration at startup. The deterministic cruise provider supplies development/test itinerary data; no external cruise account is required.
 
-The frontend currently contains Gemini's complete local-data PWA handoff. Its next cycle is to replace the local store with the stable endpoints in `contracts/openapi.yaml`.
+The frontend currently builds but still contains mock data and incomplete API integration. See `docs/release-audit.md` for the remaining repair work; the system has not passed the final release audit.
 
 ## Docker baseline
 

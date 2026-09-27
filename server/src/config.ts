@@ -8,7 +8,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(32).default(developmentSecret),
   APP_ORIGIN: z.string().url().default("http://localhost:5173"),
   GOOGLE_CLIENT_ID: z.string().optional(),
-  SMTP_URL: z.string().url().optional(),
+  SMTP_URL: z.preprocess(value => value === '' ? undefined : value, z.string().url().optional()),
   EMAIL_FROM: z.string().email().default("noreply@portmate.local"),
   CRUISE_PROVIDER: z.enum(["deterministic"]).default("deterministic"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
