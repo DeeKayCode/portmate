@@ -4,8 +4,12 @@ $ErrorActionPreference = 'Stop'
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('portmate-test-' + [guid]::NewGuid().ToString('N'))
 $source = Split-Path (Split-Path $PSScriptRoot)
 function Run-Git { & git.exe @args | Out-Null; if ($LASTEXITCODE) { throw "Fixture git failed: $($args[0])" } }
-function Worker([string]$Role, [string]$Sha, [bool]$Success) {
-    & pwsh -NoProfile -File "automation/scripts/invoke-$Role-worker.ps1" -TriggerSha $Sha -RepositoryPath (Get-Location).Path 2>$null | Out-Null
+function Worker([string]$Role, [string]$Sha, [bool]$Success, [switch]$Maintenance) {
+    if ($Maintenance) {
+        & pwsh -NoProfile -File automation/scripts/invoke-worker.ps1 -Role $Role -TriggerSha $Sha -RepositoryPath (Get-Location).Path -ResumeAfterMaintenance 2>$null | Out-Null
+    } else {
+        & pwsh -NoProfile -File "automation/scripts/invoke-$Role-worker.ps1" -TriggerSha $Sha -RepositoryPath (Get-Location).Path 2>$null | Out-Null
+    }
     if (($LASTEXITCODE -eq 0) -ne $Success) { throw "Unexpected $Role result for $Sha" }
 }
 New-Item -ItemType Directory $fixture | Out-Null
@@ -101,7 +105,9 @@ if (!(Test-Path mobile/recovered.txt)) {
 }
 if ($Prompt -notmatch 'RECOVERY:') { throw 'Expected verified recovery context.' }
 git add -- mobile
-if ((git rev-parse HEAD) -eq $sha) {
+$baseMatch=[regex]::Match($Prompt,'Produce one child commit of ([0-9a-f]{40})')
+$base=if($baseMatch.Success){$baseMatch.Groups[1].Value}else{$sha}
+if ((git rev-parse HEAD) -eq $base) {
     git commit -m '[GEMINI] recovered fixture' -m "PortMate-Trigger: $sha"
 }
 & ./automation/scripts/checkpoint-agent-work.ps1 -Role gemini -TriggerSha $sha -ConfirmAgentOwned
@@ -114,27 +120,34 @@ $global:LASTEXITCODE = 0
         Run-Git commit -m '[GPT] fixture product handoff'
         Run-Git push origin client
         $productTrigger = & git.exe rev-parse HEAD
-        $env:PORTMATE_FIXTURE_DECISION = '1'
+        'reviewed startup repair' | Set-Content prompts/maintenance.txt
+        Run-Git add prompts/maintenance.txt
+        Run-Git commit -m 'chore: fixture startup repair'
+        Run-Git push origin client
+        $productBase = & git.exe rev-parse HEAD
         Worker gemini $productTrigger $false
+        $env:PORTMATE_FIXTURE_DECISION = '1'
+        Worker gemini $productTrigger $false -Maintenance
         if ($LASTEXITCODE -ne 78) { throw 'Human decision is not distinguishable from technical failure.' }
-        if ((& git.exe rev-parse origin/client) -ne $productTrigger) { throw 'Human decision unexpectedly pushed.' }
+        if ((& git.exe rev-parse origin/client) -ne $productBase) { throw 'Human decision unexpectedly pushed.' }
         if (!(Test-Path .git/portmate-human-decision.json)) { throw 'Decision record was not preserved.' }
         Remove-Item -LiteralPath (Join-Path (Get-Location) '.git/portmate-human-decision.json')
         $env:PORTMATE_FIXTURE_DECISION = $null
         $env:PORTMATE_FIXTURE_PREFLIGHT = '1'
-        Worker gemini $productTrigger $false
-        if ((& git.exe rev-parse origin/client) -ne $productTrigger) { throw 'Failed agent pushed.' }
+        Worker gemini $productTrigger $false -Maintenance
+        if ((& git.exe rev-parse origin/client) -ne $productBase) { throw 'Failed agent pushed.' }
         'unattributed' | Set-Content unknown.txt
-        Worker gemini $productTrigger $false
+        Worker gemini $productTrigger $false -Maintenance
         if ((Get-Content unknown.txt) -ne 'unattributed') { throw 'Unknown change was altered.' }
         Remove-Item -LiteralPath (Join-Path (Get-Location) unknown.txt)
         $env:PORTMATE_FIXTURE_DIRTY_GATE = '1'
-        Worker gemini $productTrigger $false
-        if ((& git.exe rev-parse origin/client) -ne $productTrigger) { throw 'Gate-created dirt was pushed.' }
+        Worker gemini $productTrigger $false -Maintenance
+        if ((& git.exe rev-parse origin/client) -ne $productBase) { throw 'Gate-created dirt was pushed.' }
         if (!(Test-Path mobile/gate-output.txt)) { throw 'Gate output was discarded.' }
         Remove-Item -LiteralPath (Join-Path (Get-Location) mobile/gate-output.txt)
         $env:PORTMATE_FIXTURE_DIRTY_GATE = $null
-        Worker gemini $productTrigger $true
+        Worker gemini $productTrigger $true -Maintenance
+        Worker gemini $productTrigger $false -Maintenance
         if (& git.exe status --porcelain --untracked-files=all) { throw 'Recovered handoff left changes.' }
         if ((& git.exe rev-parse HEAD) -ne (& git.exe rev-parse origin/client)) { throw 'Recovery did not push.' }
         if (Test-Path .git/portmate-agent-checkpoint.json) { throw 'Successful checkpoint was not cleared.' }
