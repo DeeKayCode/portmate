@@ -28,3 +28,5 @@ try {
     $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
     if ($resolved.StartsWith($temp,[StringComparison]::OrdinalIgnoreCase) -and (Split-Path $resolved -Leaf) -match '^portmate-deps-[0-9a-f]{32}$') { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
+# The negative npm test intentionally sets LASTEXITCODE; do not leak it to the Actions shell.
+exit 0
