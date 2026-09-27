@@ -34,6 +34,26 @@ try {
     Run-Git commit -m '[GEMINI] automation handshake'
     Run-Git push origin client
     $trigger = & git.exe rev-parse HEAD
+    . ./automation/scripts/common.ps1
+    # Recovery requires explicit ownership, including staged, unstaged and untracked content.
+    'agent draft' | Set-Content agent-draft.txt
+    & ./automation/scripts/checkpoint-agent-work.ps1 -Role gpt -TriggerSha $trigger -ConfirmAgentOwned
+    if (!(Get-AgentCheckpoint gpt $trigger)) { throw 'Exact agent checkpoint was not accepted.' }
+    $rejected = $false
+    try { Assert-Clean } catch { $rejected = $true }
+    if (!$rejected) { throw 'Dirty handoff was accepted.' }
+    'later human edit' | Set-Content agent-draft.txt
+    $rejected = $false
+    try { Get-AgentCheckpoint gpt $trigger } catch { $rejected = $true }
+    if (!$rejected) { throw 'Changed untracked content was accepted for recovery.' }
+    'agent draft' | Set-Content agent-draft.txt
+    Run-Git add agent-draft.txt
+    $rejected = $false
+    try { Get-AgentCheckpoint gpt $trigger } catch { $rejected = $true }
+    if (!$rejected) { throw 'Changed staging was accepted for recovery.' }
+    # Remove only known fixture data, then restore the fixture's initial clean state.
+    Run-Git rm -f -- agent-draft.txt
+    Remove-Item -LiteralPath (Join-Path (& git.exe rev-parse --absolute-git-dir) 'portmate-agent-checkpoint.json')
     # A dirty checkout must fail and preserve the human file.
     'human work' | Set-Content human.txt
     Worker gpt $trigger $false
@@ -49,7 +69,59 @@ try {
     if ((& git.exe log -1 --format=%s) -ne 'chore: automation handshake complete') { throw 'Final marker can retrigger.' }
     Worker gemini $gptCommit $false
     if (& git.exe status --porcelain) { throw 'Fixture left dirty.' }
-    Write-Host 'PASS: offline handshake round trip, stop condition, dirty preservation, stale event and duplicate rejection.'
+    # Product recovery exercises the real wrapper with an isolated fake agent and gates.
+    New-Item -ItemType Directory prompts,mobile -Force | Out-Null
+    'Fixture agent' | Set-Content prompts/gemini-worker.md
+    @'
+param([string]$Component)
+if ($Component -eq 'client' -and $env:PORTMATE_FIXTURE_DIRTY_GATE -eq '1') {
+    'gate output' | Set-Content mobile/gate-output.txt
+}
+$global:LASTEXITCODE = 0
+'@ | Set-Content automation/scripts/test-release-gates.ps1
+    $adapterPath = Join-Path $fixture 'adapter.ps1'
+    @'
+param($Prompt, $RepositoryPath)
+$sha = [regex]::Match($Prompt, 'Trigger SHA: ([0-9a-f]{40})').Groups[1].Value
+if (!(Test-Path mobile/recovered.txt)) {
+    'agent-owned content' | Set-Content mobile/recovered.txt
+    & ./automation/scripts/checkpoint-agent-work.ps1 -Role gemini -TriggerSha $sha -ConfirmAgentOwned
+    $global:LASTEXITCODE = 1
+    return
+}
+if ($Prompt -notmatch 'RECOVERY:') { throw 'Expected verified recovery context.' }
+git add -- mobile
+if ((git rev-parse HEAD) -eq $sha) {
+    git commit -m '[GEMINI] recovered fixture' -m "PortMate-Trigger: $sha"
+}
+& ./automation/scripts/checkpoint-agent-work.ps1 -Role gemini -TriggerSha $sha -ConfirmAgentOwned
+$global:LASTEXITCODE = 0
+'@ | Set-Content $adapterPath
+    $previousAdapter = $env:PORTMATE_GEMINI_ADAPTER
+    $env:PORTMATE_GEMINI_ADAPTER = $adapterPath
+    try {
+        Run-Git add .
+        Run-Git commit -m '[GPT] fixture product handoff'
+        Run-Git push origin client
+        $productTrigger = & git.exe rev-parse HEAD
+        Worker gemini $productTrigger $false
+        if ((& git.exe rev-parse origin/client) -ne $productTrigger) { throw 'Failed agent pushed.' }
+        'unattributed' | Set-Content unknown.txt
+        Worker gemini $productTrigger $false
+        if ((Get-Content unknown.txt) -ne 'unattributed') { throw 'Unknown change was altered.' }
+        Remove-Item -LiteralPath (Join-Path (Get-Location) unknown.txt)
+        $env:PORTMATE_FIXTURE_DIRTY_GATE = '1'
+        Worker gemini $productTrigger $false
+        if ((& git.exe rev-parse origin/client) -ne $productTrigger) { throw 'Gate-created dirt was pushed.' }
+        if (!(Test-Path mobile/gate-output.txt)) { throw 'Gate output was discarded.' }
+        Remove-Item -LiteralPath (Join-Path (Get-Location) mobile/gate-output.txt)
+        $env:PORTMATE_FIXTURE_DIRTY_GATE = $null
+        Worker gemini $productTrigger $true
+        if (& git.exe status --porcelain --untracked-files=all) { throw 'Recovered handoff left changes.' }
+        if ((& git.exe rev-parse HEAD) -ne (& git.exe rev-parse origin/client)) { throw 'Recovery did not push.' }
+        if (Test-Path .git/portmate-agent-checkpoint.json) { throw 'Successful checkpoint was not cleared.' }
+    } finally { $env:PORTMATE_GEMINI_ADAPTER = $previousAdapter; $env:PORTMATE_FIXTURE_DIRTY_GATE = $null }
+    Write-Host 'PASS: handshake, replay/stale protection, dirty handoff rejection, checkpoint attribution, unknown preservation and product recovery through push.'
 } finally {
     Pop-Location
     $resolved = [IO.Path]::GetFullPath($fixture)

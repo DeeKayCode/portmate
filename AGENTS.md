@@ -27,3 +27,9 @@ The triggering commit SHA and marker decide turns: `[GEMINI]` invokes GPT; `[GPT
 On a normal handoff, work only on the required dependency chain. GPT may edit `server/`, `/contracts`, backend documentation and Docker/release configuration; Gemini may edit `mobile/` and `DesignSpec.md`. Each worker tests, repairs its own failures and creates one coherent handoff commit with `PortMate-Trigger: <trigger-sha>`. The wrapper pushes it.
 
 The current initialization is an exception: GPT may reconcile source-of-truth documents, contracts and automation gates, then must commit a non-triggering `chore:` commit and wait for Gemini's first real product handoff.
+
+## Mandatory clean handoff and recovery
+
+Inspect staged, unstaged and all untracked files. Review and stage every intentional change from this run, validate, create the handoff, and verify `git status --porcelain --untracked-files=all` is empty. A marker alone does not complete a handoff. Never push directly; the wrapper checks cleanliness again after validation and immediately before pushing.
+
+After inspecting and attributing all pending changes to this run, save an explicit recovery checkpoint with `automation/scripts/checkpoint-agent-work.ps1 -Role <role> -TriggerSha <sha> -ConfirmAgentOwned`. Refresh it after intentional edits and after committing. This records a fingerprint in Git metadata, not application files. Never attest unknown changes. An interrupted run may resume only when the event, HEAD, index, tracked diffs and untracked file contents exactly match that checkpoint. Reinspect and validate recovered work; keep one handoff commit, amending only an unpublished commit belonging to this same run when necessary. Unknown changes or changes since the checkpoint are preserved and stop automatic recovery. Do not delete, reset, overwrite, stash or blindly commit them.

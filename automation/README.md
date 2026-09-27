@@ -33,11 +33,13 @@ Both wrappers require a clean client checkout, correct origin, full event SHA at
 - Agent failure: disable triggers, inspect preserved diff and logs; repair deliberately. No push occurs after a failed invocation.
 - Offline PC: restore the service and review queued jobs. Stale jobs fail rather than processing an obsolete handoff. Resume from the latest valid event.
 - Rejected push / remote advanced: preserve local commit, integrate manually, rerun tests, then push an expected marker only after review.
-- Dirty checkout: preserve/commit or move human work manually. Do not delete it to clear a job.
+- Dirty checkout: recover only an exact agent-attested checkpoint for the active role and trigger. The checkpoint fingerprints HEAD, staging, tracked changes and all untracked file contents. Changed or unknown files stop recovery and are preserved. No automatic stash, reset, deletion or blind commit is permitted. See `AGENTS.md` for the checkpoint command.
 - Merge conflict: stop; resolve manually and rerun gates. No automatic rebase or history rewrite.
 - CI failure: inspect failed gate, fix its cause and revalidate; a completion marker is not a release.
 - Timeout: Actions cancels after 45 minutes; check and stop surviving child processes before restarting. OS handles release the lock when the wrapper exits; never bypass a live lock. Review any leftover changes/commit before retry.
-- Duplicate event: if origin advanced, the stale-SHA check rejects it. If a process committed but failed before pushing, the ancestry check rejects its unpushed commit on retry; review and push/recover manually.
+- Duplicate event: if origin advanced, the stale-SHA check rejects it. An unpublished handoff can resume through a matching checkpoint, then passes the same marker, ancestry, ownership, secret and validation gates before pushing.
+
+Every handoff must include all intentional changes. The wrapper checks the complete worktree after the agent, after validation, immediately before push and after push. Validation-created changes block publication. A checkpoint is an explicit ownership attestation, not proof inferred from filenames, author names or a dirty checkout; interruption before an attested checkpoint still requires review. Ignored build output and external processes that ignore the worker lock are outside the tracked/untracked cleanliness guarantee. Checkpoints live in Git metadata and are cleared after successful publication.
 
 ## Current bootstrap status
 

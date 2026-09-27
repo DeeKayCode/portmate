@@ -10,7 +10,26 @@ function Assert-Remote {
     if ($remote -notmatch '^(https://github\.com/DeeKayCode/portmate(?:\.git)?|git@github\.com:DeeKayCode/portmate(?:\.git)?)$') { throw 'Wrong repository remote.' }
 }
 function Assert-Clean {
-    if (Git status --porcelain --untracked-files=all) { throw 'Dirty working tree; preserve and review changes manually.' }
+    if (Git status --porcelain --untracked-files=all) { throw 'Incomplete handoff: staged, unstaged or untracked changes remain. Preserve them; only an exact agent checkpoint may be recovered automatically.' }
+}
+function Get-WorktreeFingerprint {
+    # Include the index independently: identical working files with different staging are different states.
+    $parts = @((Git rev-parse HEAD), (Git status --porcelain --untracked-files=all), (Git diff --binary HEAD --), (Git diff --cached --binary --))
+    foreach ($path in @(Git -c core.quotePath=false ls-files --others --exclude-standard)) {
+        if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Cannot safely fingerprint an untracked path.' }
+        $parts += $path
+        $parts += (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    }
+    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($parts -join "`n"))))
+}
+function Get-AgentCheckpoint([string]$Role, [string]$TriggerSha) {
+    $path = Join-Path (Git rev-parse --absolute-git-dir) 'portmate-agent-checkpoint.json'
+    if (!(Test-Path -LiteralPath $path)) { return $null }
+    $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    if ($record.role -ne $Role -or $record.trigger -ne $TriggerSha -or $record.fingerprint -ne (Get-WorktreeFingerprint)) {
+        throw 'Recovery checkpoint does not match this event and complete worktree. Preserve changes for review.'
+    }
+    return $record
 }
 function Assert-NoSecrets([string]$Revision = 'HEAD') {
     $paths = @(Git ls-tree -r --name-only $Revision)
